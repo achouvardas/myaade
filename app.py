@@ -321,21 +321,23 @@ def invoice_pdf(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
     canvas = Canvas(path, pagesize=A4); navy, slate, pale, cyan = HexColor("#0f172a"), HexColor("#334155"), HexColor("#f1f5f9"), HexColor("#0891b2"); canvas.setFillColor(HexColor("#ffffff")); canvas.rect(0, 0, 595, 842, fill=1, stroke=0); canvas.setStrokeColor(HexColor("#cbd5e1")); canvas.setLineWidth(.8)
     legal = setting("business_legal_name", "") or "ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ"; activity = setting("business_activity", ""); issuer_vat = setting("business_vat", ""); doy = setting("business_doy", ""); address = setting("business_address", ""); contact = " · ".join(item for item in [setting("business_email", ""), setting("business_phone", ""), setting("business_website", "")] if item); gemi = setting("business_gemi", ""); logo_path = setting("business_logo", "")
-    if logo_path and os.path.isfile(logo_path): canvas.drawImage(logo_path, 42, 735, width=52, height=52, preserveAspectRatio=True, mask="auto")
-    text_x = 106 if logo_path and os.path.isfile(logo_path) else 42; canvas.setFillColor(navy); canvas.setFont("SiraSans", 16); canvas.drawString(text_x, 795, legal); canvas.setFillColor(slate); canvas.setFont("SiraSans", 9)
+    if logo_path and os.path.isfile(logo_path): canvas.drawImage(logo_path, 476, 735, width=64, height=64, preserveAspectRatio=True, mask="auto")
+    text_x = 42; canvas.setFillColor(navy); canvas.setFont("SiraSans", 16); canvas.drawString(text_x, 795, legal); canvas.setFillColor(slate); canvas.setFont("SiraSans", 9)
     for position, line in enumerate([activity, f"ΑΦΜ: {issuer_vat} · ΔΟΥ: {doy}" if issuer_vat else "", address, contact, f"Αρ. ΓΕΜΗ: {gemi}" if gemi else ""]):
         if line: canvas.drawString(text_x, 775 - position * 13, line)
-    canvas.setFillColor(pale); canvas.rect(42, 665, 510, 48, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 9); canvas.drawString(54, 695, "Είδος Παραστατικού"); canvas.drawString(54, 678, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)); canvas.drawString(320, 695, f"Σειρά: {setting('invoice_series', 'A')}"); canvas.drawString(320, 678, f"Αριθμός Παραστατικού: {invoice.number} · Ημερομηνία: {invoice.issue_date.strftime('%d/%m/%Y')}")
+    canvas.setFont("SiraSans", 8); canvas.setFillColor(pale)
+    for x, width in [(42, 250), (300, 62), (370, 86), (464, 88)]: canvas.rect(x, 665, width, 48, fill=1, stroke=1)
+    canvas.setFillColor(navy); canvas.drawString(52, 695, "Είδος Παραστατικού"); canvas.drawString(52, 678, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)[:38]); canvas.drawString(310, 695, "Σειρά"); canvas.drawString(310, 678, setting("invoice_series", "A")); canvas.drawString(380, 695, "Αριθμός"); canvas.drawString(380, 678, invoice.number); canvas.drawString(474, 695, "Ημερομηνία"); canvas.drawString(474, 678, invoice.issue_date.strftime('%d/%m/%Y'))
     canvas.setFillColor(navy); canvas.rect(42, 630, 510, 22, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.setFont("SiraSans", 10); canvas.drawString(54, 638, "Στοιχεία Πελάτη")
     canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 545, 510, 85, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
     if invoice.customer_address: canvas.drawString(54, 570, invoice.customer_address.replace("\n", ", ")[:90])
     if invoice.customer_profession: canvas.drawString(54, 557, f"ΕΠΑΓΓΕΛΜΑ: {invoice.customer_profession}"[:90])
     canvas.setFillColor(cyan); canvas.drawRightString(540, 606, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
-    y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
+    y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(397, y+9, "ΚΑΘ. ΑΞΙΑ"); canvas.drawRightString(447, y+9, "ΦΠΑ %"); canvas.drawRightString(495, y+9, "ΦΠΑ €"); canvas.drawRightString(540, y+9, "ΣΥΝΟΛΟ")
     for index, line in enumerate(lines or [type("L", (), {"description":invoice.description,"net":invoice.net})()], 1):
-        y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(92, y+10, str(line.description)[:65]); canvas.drawRightString(535, y+10, f"{line.net:.2f} €")
+        vat_rate = Decimal(getattr(line, "vat_rate", invoice.vat_rate)); vat_amount = Decimal(line.net) * vat_rate / 100; y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(92, y+10, str(line.description)[:43]); canvas.drawRightString(397, y+10, f"{line.net:.2f}"); canvas.drawRightString(447, y+10, f"{vat_rate:.0f}%"); canvas.drawRightString(495, y+10, f"{vat_amount:.2f}"); canvas.drawRightString(540, y+10, f"{Decimal(line.net)+vat_amount:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{invoice.net:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{invoice.vat_amount:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{invoice.total:.2f} €")
-    canvas.setFont("SiraSans", 9); canvas.setFillColor(slate); canvas.drawString(42, 235, f"Τρόπος πληρωμής: {PAYMENT_METHODS.get(invoice.payment_method, '-')}"); canvas.drawString(42, 216, f"UID: {invoice.invoice_uid or '-'}")
+    canvas.setFont("SiraSans", 9); canvas.setFillColor(slate); canvas.drawString(42, 235, f"Τρόπος πληρωμής: {PAYMENT_METHODS.get(invoice.payment_method, '-')}"); canvas.drawString(42, 216, f"UID: {invoice.invoice_uid or '-'}"); canvas.drawString(42, 197, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
     if invoice.qr_url:
         widget = qr.QrCodeWidget(invoice.qr_url); left, bottom, right, top = widget.getBounds(); size = 94; drawing = Drawing(size, size); drawing.add(widget); drawing.transform = [size / (right-left), 0, 0, size / (top-bottom), 0, 0]; renderPDF.draw(drawing, canvas, 42, 85); canvas.linkURL(invoice.qr_url, (42, 85, 136, 179), relative=0)
     canvas.setFillColor(slate); canvas.setFont("SiraSans", 8); canvas.drawString(42, 55, "Το παρόν διαβιβάστηκε επιτυχώς στο myDATA της ΑΑΔΕ." if invoice.mydata_mark else "Πρόχειρο — δεν έχει ακόμη διαβιβαστεί στο myDATA."); canvas.save(); audit("pdf_generated", f"Invoice {invoice.number}"); return send_file(path, as_attachment=False, download_name=f"invoice-{invoice.number}.pdf", mimetype="application/pdf")
@@ -395,16 +397,17 @@ def check_vies(raw_vat):
     return vat, fields.get("name", "Verified Greek business").split("||", 1)[0].strip(), fields.get("address", "")
 def lookup_gemi(vat):
     try:
-        autocomplete = requests.get(f"https://publicity.businessportal.gr/api/autocomplete/{vat}", timeout=10).json()
+        autocomplete_response = requests.get(f"https://publicity.businessportal.gr/api/autocomplete/{vat}", timeout=10); autocomplete_response.raise_for_status(); autocomplete = autocomplete_response.json()
         matches = autocomplete.get("payload", {}).get("autocomplete", [])
-        if not matches or not matches[0].get("arGemi"): return "", "", ""
+        if not matches or not matches[0].get("arGemi"): audit("gemi_lookup", f"No ΓΕΜΗ record for VAT {vat}", "{}"); return "", "", ""
         gemi = str(matches[0]["arGemi"])
-        details = requests.post("https://publicity.businessportal.gr/api/company/details", json={"query": {"arGEMI": gemi}, "token": None, "language": "el"}, timeout=12).json()
+        details_response = requests.post("https://publicity.businessportal.gr/api/company/details", json={"query": {"arGEMI": gemi}, "token": None, "language": "el"}, timeout=12); details_response.raise_for_status(); details = details_response.json()
         payload = details.get("companyInfo", {}).get("payload", {})
         profession = next((item.get("descr", "").strip() for item in payload.get("kadData", []) if item.get("activities", "").strip().lower() == "κύρια".lower() and item.get("descr")), "")
         address = payload.get("company", {}).get("company_address", "").strip()
+        audit("gemi_lookup", f"ΓΕΜΗ {gemi} for VAT {vat}; primary activity: {profession or 'not provided'}", str({"gemi": gemi, "profession": profession, "address": address}))
         return gemi, profession, address
-    except (requests.RequestException, ValueError, TypeError, KeyError): return "", "", ""
+    except (requests.RequestException, ValueError, TypeError, KeyError) as error: audit("gemi_lookup_failed", f"ΓΕΜΗ lookup for VAT {vat}: {error}"); return "", "", ""
 @app.route("/clients", methods=["GET", "POST"])
 def clients():
     if request.method == "POST":
