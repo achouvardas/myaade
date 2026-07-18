@@ -515,7 +515,7 @@ def invoices():
     term, status, invoice_type, vat = (request.args.get(key, "").strip() for key in ("q", "status", "invoice_type", "vat"))
     if " — " in term: term = term.rsplit(" — ", 1)[-1].strip()
     if term: query = query.filter(or_(Invoice.number.ilike(f"%{term}%"), Invoice.customer.ilike(f"%{term}%"), Invoice.vat_number.ilike(f"%{term}%"), Invoice.mydata_mark.ilike(f"%{term}%")))
-    if status in {"draft", "transmitted"}: query = query.filter_by(status=status)
+    if status in {"draft", "transmitted", "cancelled"}: query = query.filter_by(status=status)
     if invoice_type in INVOICE_TYPES: query = query.filter_by(invoice_type=invoice_type)
     if vat: query = query.filter(Invoice.vat_number.ilike(f"%{vat}%"))
     for key, operator in (("start", ">="), ("end", "<=")):
