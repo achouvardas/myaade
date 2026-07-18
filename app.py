@@ -18,6 +18,7 @@ from reportlab.graphics.barcode import qr
 from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Drawing
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 from sqlalchemy import inspect, text
 
 load_dotenv()
@@ -276,8 +277,19 @@ def business_settings():
     require_admin(); fields = ("business_legal_name", "business_activity", "business_vat", "business_doy", "business_address", "business_email", "business_phone", "business_gemi", "business_website")
     if request.method == "POST":
         for field in fields: set_setting(field, request.form.get(field, ""))
+        logo = request.files.get("business_logo")
+        if logo and logo.filename:
+            extension = os.path.splitext(secure_filename(logo.filename))[1].lower()
+            if extension not in {".png", ".jpg", ".jpeg"}: flash("Logo must be a PNG or JPG image.", "error"); return redirect(url_for("business_settings"))
+            logo_path = os.path.join(app.instance_path, f"business-logo{extension}"); logo.save(logo_path); set_setting("business_logo", logo_path)
         db.session.commit(); audit("business_profile_updated"); flash("Business profile saved.", "success"); return redirect(url_for("business_settings"))
-    return render_template("business_settings.html", values={field: setting(field, "") for field in fields})
+    return render_template("business_settings.html", values={field: setting(field, "") for field in fields}, logo_configured=bool(setting("business_logo", "")))
+@app.get("/business-logo")
+def business_logo():
+    if not current_user(): abort(403)
+    path = setting("business_logo", "")
+    if not path or not os.path.isfile(path): abort(404)
+    return send_file(path)
 @app.route("/users", methods=["GET", "POST"])
 def users():
     require_admin()
@@ -305,15 +317,17 @@ def view_xml_log(log_id):
 def invoice_pdf(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
     canvas = Canvas(path, pagesize=A4); navy, slate, pale, cyan = HexColor("#0f172a"), HexColor("#334155"), HexColor("#f1f5f9"), HexColor("#0891b2"); canvas.setFillColor(HexColor("#ffffff")); canvas.rect(0, 0, 595, 842, fill=1, stroke=0); canvas.setStrokeColor(HexColor("#cbd5e1")); canvas.setLineWidth(.8)
-    legal = setting("business_legal_name", "") or "ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ"; activity = setting("business_activity", ""); issuer_vat = setting("business_vat", ""); doy = setting("business_doy", ""); address = setting("business_address", ""); contact = " · ".join(item for item in [setting("business_email", ""), setting("business_phone", ""), setting("business_website", "")] if item); gemi = setting("business_gemi", "")
-    canvas.setFillColor(navy); canvas.setFont("SiraSans", 16); canvas.drawString(42, 795, legal); canvas.setFillColor(slate); canvas.setFont("SiraSans", 9)
+    legal = setting("business_legal_name", "") or "ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ"; activity = setting("business_activity", ""); issuer_vat = setting("business_vat", ""); doy = setting("business_doy", ""); address = setting("business_address", ""); contact = " · ".join(item for item in [setting("business_email", ""), setting("business_phone", ""), setting("business_website", "")] if item); gemi = setting("business_gemi", ""); logo_path = setting("business_logo", "")
+    if logo_path and os.path.isfile(logo_path): canvas.drawImage(logo_path, 42, 735, width=52, height=52, preserveAspectRatio=True, mask="auto")
+    text_x = 106 if logo_path and os.path.isfile(logo_path) else 42; canvas.setFillColor(navy); canvas.setFont("SiraSans", 16); canvas.drawString(text_x, 795, legal); canvas.setFillColor(slate); canvas.setFont("SiraSans", 9)
     for position, line in enumerate([activity, f"ΑΦΜ: {issuer_vat} · ΔΟΥ: {doy}" if issuer_vat else "", address, contact, f"Αρ. ΓΕΜΗ: {gemi}" if gemi else ""]):
-        if line: canvas.drawString(42, 775 - position * 13, line)
-    canvas.setFillColor(pale); canvas.rect(42, 675, 510, 42, fill=1, stroke=1); canvas.setFillColor(cyan); canvas.setFont("SiraSans", 16); canvas.drawCentredString(297, 691, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type))
-    canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 595, 510, 62, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 632, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.setFont("SiraSans", 9); canvas.drawString(54, 614, f"ΑΦΜ: {invoice.vat_number}");
-    if invoice.customer_address: canvas.drawString(54, 600, invoice.customer_address.replace("\n", ", ")[:90])
-    canvas.setFont("SiraSans", 9); canvas.drawRightString(540, 632, f"Α/Α: {invoice.number} · Ημερομηνία {invoice.issue_date.strftime('%d/%m/%Y')}"); canvas.setFillColor(cyan); canvas.drawRightString(540, 614, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
-    y = 560; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
+        if line: canvas.drawString(text_x, 775 - position * 13, line)
+    canvas.setFillColor(pale); canvas.rect(42, 665, 510, 48, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 9); canvas.drawString(54, 695, "Είδος Παραστατικού"); canvas.drawString(54, 678, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)); canvas.drawString(320, 695, f"Σειρά: {setting('invoice_series', 'A')}"); canvas.drawString(320, 678, f"Αριθμός Παραστατικού: {invoice.number} · Ημερομηνία: {invoice.issue_date.strftime('%d/%m/%Y')}")
+    canvas.setFillColor(navy); canvas.rect(42, 630, 510, 22, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.setFont("SiraSans", 10); canvas.drawString(54, 638, "Στοιχεία Πελάτη")
+    canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 560, 510, 70, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
+    if invoice.customer_address: canvas.drawString(54, 570, invoice.customer_address.replace("\n", ", ")[:90])
+    canvas.setFillColor(cyan); canvas.drawRightString(540, 606, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
+    y = 525; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
     for index, line in enumerate(lines or [type("L", (), {"description":invoice.description,"net":invoice.net})()], 1):
         y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(92, y+10, str(line.description)[:65]); canvas.drawRightString(535, y+10, f"{line.net:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{invoice.net:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{invoice.vat_amount:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{invoice.total:.2f} €")
