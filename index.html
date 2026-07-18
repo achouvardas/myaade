@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Elefthero is the open-source way to invoice in Greece.">
+  <title>Elefthero — Open-source invoicing for Greece</title>
+  <style>
+    :root { --ink:#10233c; --muted:#58708c; --paper:#f7fafc; --blue:#1574d4; --aqua:#19b9b3; --line:#d9e4ee; --card:#fff; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--paper); line-height:1.55; }
+    a { color:inherit; }
+    .shell { max-width:1120px; margin:auto; padding:0 24px; }
+    nav { height:76px; display:flex; justify-content:space-between; align-items:center; }
+    .brand { text-decoration:none; font-size:1.3rem; font-weight:800; letter-spacing:-.04em; }
+    .brand i { color:var(--aqua); font-style:normal; }
+    .navlinks { display:flex; gap:20px; font-size:.9rem; font-weight:650; }
+    .navlinks a { text-decoration:none; color:var(--muted); }
+    .hero { position:relative; overflow:hidden; background:#102f50; color:#fff; padding:84px 0 96px; }
+    .hero:before { content:""; position:absolute; width:550px; height:550px; border-radius:50%; background:radial-gradient(circle,#23c1ba 0,rgba(35,193,186,0) 68%); right:-130px; top:-260px; opacity:.6; }
+    .eyebrow { display:inline-flex; gap:8px; align-items:center; color:#a7f1e9; font-size:.76rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+    .eyebrow:before { content:""; width:8px; height:8px; background:#55ddce; border-radius:50%; }
+    h1 { position:relative; max-width:780px; margin:18px 0; font-size:clamp(2.7rem,7vw,5.9rem); line-height:.98; letter-spacing:-.07em; }
+    .lead { max-width:630px; font-size:1.16rem; color:#d3e2ee; }
+    .actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:30px; }
+    .button { display:inline-block; text-decoration:none; border-radius:9px; padding:12px 18px; font-size:.94rem; font-weight:750; }
+    .button.primary { color:#052844; background:#65dfd1; }
+    .button.secondary { color:white; border:1px solid #6890ac; }
+    section { padding:76px 0; }
+    h2 { max-width:700px; font-size:clamp(1.85rem,4vw,3rem); line-height:1.08; letter-spacing:-.045em; margin:0 0 15px; }
+    .intro { max-width:720px; color:var(--muted); font-size:1.06rem; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:34px; }
+    .card { padding:25px; border:1px solid var(--line); border-radius:13px; background:var(--card); }
+    .number { color:var(--aqua); font-size:.75rem; font-weight:800; letter-spacing:.1em; }
+    h3 { font-size:1.07rem; margin:9px 0; letter-spacing:-.02em; }
+    .card p { color:var(--muted); margin:0; font-size:.94rem; }
+    .band { background:#e7f5f4; border-top:1px solid #cde8e5; border-bottom:1px solid #cde8e5; }
+    .steps { display:grid; grid-template-columns:repeat(5,1fr); gap:0; margin-top:32px; }
+    .step { padding:18px 20px; min-height:168px; border-left:1px solid #b9ddd9; }
+    .step:first-child { border-left:0; }
+    .step strong { display:block; font-size:.82rem; margin-bottom:8px; color:#0b645f; }
+    .step span { color:#426462; font-size:.9rem; }
+    .tech { display:grid; grid-template-columns:1.1fr .9fr; gap:55px; align-items:start; }
+    .tags { display:flex; flex-wrap:wrap; gap:9px; margin-top:25px; }
+    .tag { border:1px solid var(--line); background:#fff; padding:7px 11px; border-radius:99px; color:#42627e; font-size:.83rem; font-weight:650; }
+    .note { background:#102f50; color:white; border-radius:14px; padding:28px; }
+    .note p { color:#cfe2ef; margin:10px 0 0; }
+    .note a { color:#8eefe4; font-weight:700; }
+    footer { padding:35px 0; border-top:1px solid var(--line); color:var(--muted); font-size:.85rem; }
+    @media(max-width:760px) { .grid { grid-template-columns:1fr; } .steps { grid-template-columns:1fr; } .step { border-left:0; border-top:1px solid #b9ddd9; min-height:auto; } .step:first-child { border-top:0; } .tech { grid-template-columns:1fr; gap:28px; } .navlinks { display:none; } .hero { padding:66px 0 75px; } }
+  </style>
+</head>
+<body>
+  <header class="shell"><nav><a class="brand" href="#top">Elefther<i>o</i></a><div class="navlinks"><a href="#product">Product</a><a href="#technology">Technology</a><a href="https://github.com/achouvardas/Elefthero">GitHub</a></div></nav></header>
+  <main id="top">
+    <section class="hero"><div class="shell"><span class="eyebrow">OpenAI Build Week · Apps for your life</span><h1>The open-source way to invoice in Greece.</h1><p class="lead">Elefthero is a practical, transparent invoicing workspace for Greek sole traders and small businesses—built around AADE myDATA, not lock-in.</p><div class="actions"><a class="button primary" href="https://myaade-test.thrakionline.gr/">Open live test app</a><a class="button secondary" href="https://github.com/achouvardas/Elefthero">View the source</a></div></div></section>
+    <section id="product"><div class="shell"><h2>Invoicing should be understandable, usable, and yours.</h2><p class="intro">Many small Greek businesses face expensive, opaque invoicing platforms. Elefthero turns the myDATA process into a clear workflow with a local SQLite data store, readable records, and real AADE test/production modes.</p><div class="grid"><article class="card"><div class="number">01 — CREATE</div><h3>Invoices that fit real work</h3><p>Greek invoice types, multiple line items, mixed VAT, exemption reasons, payment methods, series and sequential numbering.</p></article><article class="card"><div class="number">02 — VERIFY</div><h3>Know your customer</h3><p>Reusable clients with VAT data, VIES validation and ΓΕΜΗ enrichment when those public services are available.</p></article><article class="card"><div class="number">03 — TRANSMIT</div><h3>See exactly what happened</h3><p>Generate AADE myDATA XML, submit it to the chosen AADE environment, then preserve the returned XML, MARK, UID and QR URL.</p></article></div></div></section>
+    <section class="band"><div class="shell"><h2>A transparent path from draft to AADE.</h2><div class="steps"><div class="step"><strong>1. Configure</strong><span>Set issuer details, credentials, mode and invoice defaults in a guided setup.</span></div><div class="step"><strong>2. Add a client</strong><span>Store VAT, address and optional public business information for reuse.</span></div><div class="step"><strong>3. Build the invoice</strong><span>Enter lines, VAT, classifications and the payment method.</span></div><div class="step"><strong>4. Review XML</strong><span>Inspect generated payloads and diagnostic records before and after submission.</span></div><div class="step"><strong>5. Keep the proof</strong><span>Issue a browser PDF with its AADE identifiers and clickable QR link.</span></div></div></div></section>
+    <section id="technology"><div class="shell tech"><div><h2>Built as a working product, with Codex in the loop.</h2><p class="intro">Elefthero is a Flask application designed for daily use, not a mockup. Codex helped shape the implementation across schema-sensitive myDATA XML, a multilingual product surface, deployment and documentation—while the project remained inspectable in a public repository.</p><div class="tags"><span class="tag">Python</span><span class="tag">Flask</span><span class="tag">SQLite</span><span class="tag">AADE myDATA REST</span><span class="tag">VIES</span><span class="tag">ΓΕΜΗ public data</span><span class="tag">ReportLab PDF</span><span class="tag">Cloudflare Tunnel</span><span class="tag">systemd</span></div></div><aside class="note"><strong>Designed for responsible access</strong><p>AADE credentials are not committed to Git. They are entered during first setup and stored locally by the deployed application. The interface distinguishes AADE test from production submission.</p><p><a href="https://github.com/achouvardas/Elefthero/blob/master/README.md">Read the technical README →</a></p></aside></div></section>
+    <section><div class="shell"><h2>Freedom is a product feature.</h2><p class="intro">Open source makes the billing workflow auditable, adaptable and accessible. Elefthero is an early but real foundation for a Greek invoicing tool that small businesses can understand, operate and improve together.</p><div class="actions"><a class="button primary" href="https://github.com/achouvardas/Elefthero">Explore Elefthero on GitHub</a></div></div></section>
+  </main>
+  <footer><div class="shell">Elefthero · Open-source invoicing for Greece · Built for OpenAI Build Week</div></footer>
+</body>
+</html>
