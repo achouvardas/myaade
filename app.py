@@ -325,7 +325,8 @@ def invoice_pdf(invoice_id):
     legal = setting("business_legal_name", "") or "ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ"; activity = setting("business_activity", ""); issuer_vat = setting("business_vat", ""); doy = setting("business_doy", ""); address = setting("business_address", ""); contact = " · ".join(item for item in [setting("business_email", ""), setting("business_phone", ""), setting("business_website", "")] if item); gemi = setting("business_gemi", ""); logo_path = setting("business_logo", "")
     if logo_path and os.path.isfile(logo_path): canvas.drawImage(logo_path, 476, 735, width=64, height=64, preserveAspectRatio=True, mask="auto")
     text_x = 42; canvas.setFillColor(navy); canvas.setFont("SiraSans", 16); canvas.drawString(text_x, 795, legal); canvas.setFillColor(slate); canvas.setFont("SiraSans", 9)
-    for position, line in enumerate([activity, f"ΑΦΜ: {issuer_vat} · ΔΟΥ: {doy}" if issuer_vat else "", address, contact, f"Αρ. ΓΕΜΗ: {gemi}" if gemi else ""]):
+    vat_doy_gemi = " · ".join(part for part in [f"ΑΦΜ: {issuer_vat}" if issuer_vat else "", f"ΔΟΥ: {doy}" if doy else "", f"Αρ. ΓΕΜΗ: {gemi}" if gemi else ""] if part)
+    for position, line in enumerate([activity, vat_doy_gemi, address, contact]):
         if line: canvas.drawString(text_x, 775 - position * 13, line)
     canvas.setFont("SiraSans", 8); canvas.setFillColor(pale)
     for x, width in [(42, 250), (300, 62), (370, 86), (464, 88)]: canvas.rect(x, 665, width, 48, fill=1, stroke=1)
