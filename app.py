@@ -176,7 +176,7 @@ def invoice_xml(invoice):
     header = SubElement(inv, "invoiceHeader")
     SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
     SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
-    payment = SubElement(inv, "paymentMethods")
+    payment = SubElement(SubElement(inv, "paymentMethods"), "paymentMethodDetails")
     SubElement(payment, "type").text, SubElement(payment, "amount").text = invoice.payment_method or "3", f"{invoice.total:.2f}"
     lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).order_by(InvoiceLine.id).all()
     if not lines: lines = [type("LegacyLine", (), {"net": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None, "income_category": None, "income_type": None})()]
