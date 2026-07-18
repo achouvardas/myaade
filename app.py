@@ -62,6 +62,7 @@ INCOME_TYPES = {
 }
 INCOME_CLASSIFICATION_NS = "https://www.aade.gr/myDATA/incomeClassificaton/v1.0"
 register_namespace("income", INCOME_CLASSIFICATION_NS)
+PAYMENT_METHODS = {"1": "Επαγγελματικός λογαριασμός ημεδαπής", "2": "Επαγγελματικός λογαριασμός αλλοδαπής", "3": "Μετρητά", "4": "Επιταγή", "5": "Επί πιστώσει", "6": "Web Banking", "7": "POS / e-POS", "8": "Άμεσες Πληρωμές IRIS"}
 INVOICE_TYPES = {
     "1.1": "Τιμολόγιο Πώλησης", "1.2": "Τιμολόγιο Πώλησης / Ενδοκοινοτικές Παραδόσεις", "1.3": "Τιμολόγιο Πώλησης / Παραδόσεις Τρίτων Χωρών", "1.4": "Τιμολόγιο Πώλησης / Λογαριασμό Τρίτων", "1.5": "Τιμολόγιο Πώλησης / Εκκαθάριση Πωλήσεων Τρίτων", "1.6": "Τιμολόγιο Πώλησης / Συμπληρωματικό", "2.1": "Τιμολόγιο Παροχής", "2.2": "Τιμολόγιο Παροχής / Ενδοκοινοτική", "2.3": "Τιμολόγιο Παροχής / Τρίτη Χώρα", "2.4": "Τιμολόγιο Παροχής / Συμπληρωματικό", "3.1": "Τίτλος Κτήσης (μη υπόχρεος Εκδότης)", "3.2": "Τίτλος Κτήσης (άρνηση έκδοσης)", "5.1": "Πιστωτικό Τιμολόγιο / Συσχετιζόμενο", "5.2": "Πιστωτικό Τιμολόγιο / Μη Συσχετιζόμενο", "6.1": "Στοιχείο Αυτοπαράδοσης", "6.2": "Στοιχείο Ιδιοχρησιμοποίησης", "7.1": "Συμβόλαιο - Έσοδο", "8.1": "Ενοίκια - Έσοδο", "8.2": "Τέλος ανθεκτικότητας κλιματικής κρίσης", "8.4": "Απόδειξη Είσπραξης POS", "8.5": "Απόδειξη Επιστροφής POS", "8.6": "Δελτίο Παραγγελίας Εστίασης", "9.1": "Δελτίο Αποστολής Συσχετιζόμενο", "9.2": "Συγκεντρωτικό Δελτίο Αποστολής", "9.3": "Δελτίο Αποστολής", "10.1": "Δελτίο Ποσοτικής Παραλαβής Συσχετιζόμενο", "10.2": "Δελτίο Ποσοτικής Παραλαβής Μη Συσχετιζόμενο", "11.1": "ΑΛΠ", "11.2": "ΑΠΥ", "11.3": "Απλοποιημένο Τιμολόγιο", "11.4": "Πιστωτικό Στοιχ. Λιανικής", "11.5": "Απόδειξη Λιανικής για Λογαριασμό Τρίτων", "13.1": "Έξοδα - Αγορές Λιανικών", "13.2": "Παροχή Λιανικών", "13.3": "Κοινόχρηστα", "13.4": "Συνδρομές", "13.30": "Παραστατικά Οντότητας ως Αναγράφονται", "13.31": "Πιστωτικό Στοιχ. Λιανικής", "14.1": "Τιμολόγιο / Ενδοκοινοτικές Αποκτήσεις", "14.2": "Τιμολόγιο / Αποκτήσεις Τρίτων Χωρών", "14.3": "Τιμολόγιο / Ενδοκοινοτική Λήψη Υπηρεσιών", "14.4": "Τιμολόγιο / Λήψη Υπηρεσιών Τρίτων Χωρών", "14.5": "ΕΦΚΑ και λοιποί Ασφαλιστικοί Οργανισμοί", "14.30": "Παραστατικά Οντότητας ως Αναγράφονται", "14.31": "Πιστωτικό ημεδαπής / αλλοδαπής", "15.1": "Συμβόλαιο - Έξοδο", "16.1": "Ενοίκιο Έξοδο", "17.1": "Μισθοδοσία", "17.2": "Αποσβέσεις", "17.3": "Λοιπές Εγγραφές Τακτοποίησης Εσόδων - Λογιστική Βάση", "17.4": "Λοιπές Εγγραφές Τακτοποίησης Εσόδων - Φορολογική Βάση", "17.5": "Λοιπές Εγγραφές Τακτοποίησης Εξόδων - Λογιστική Βάση", "17.6": "Λοιπές Εγγραφές Τακτοποίησης Εξόδων - Φορολογική Βάση",
 }
@@ -82,6 +83,7 @@ class Invoice(db.Model):
     issue_date = db.Column(db.Date, nullable=False, default=date.today)
     status = db.Column(db.String(30), nullable=False, default="draft")
     mydata_mark = db.Column(db.String(60))
+    payment_method = db.Column(db.String(2), nullable=False, default="3")
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     @property
@@ -171,6 +173,8 @@ def invoice_xml(invoice):
     issuer, counterpart = SubElement(inv, "issuer"), SubElement(inv, "counterpart")
     SubElement(issuer, "vatNumber").text, SubElement(issuer, "country").text, SubElement(issuer, "branch").text = setting("business_vat", os.getenv("MYDATA_VAT_NUMBER", "")), "GR", "0"
     SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text, SubElement(counterpart, "branch").text = invoice.vat_number, "GR", "0"
+    payment = SubElement(inv, "paymentMethods")
+    SubElement(payment, "type").text, SubElement(payment, "amount").text = invoice.payment_method or "3", f"{invoice.total:.2f}"
     header = SubElement(inv, "invoiceHeader")
     SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
     SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
@@ -292,6 +296,8 @@ def new_invoice():
     if request.method == "POST":
         invoice_type = request.form["invoice_type"]
         if invoice_type not in INVOICE_TYPES: flash("Invalid AADE invoice type.", "error"); return redirect(url_for("new_invoice"))
+        payment_method = request.form.get("payment_method", "3")
+        if payment_method not in PAYMENT_METHODS: flash("Choose a valid AADE payment method.", "error"); return redirect(url_for("new_invoice"))
         retail = invoice_type in {"11.1", "11.2", "11.3", "11.4", "11.5"}
         default_income_category = "category1_3"
         default_income_type = "E3_561_003" if retail else "E3_561_001"
@@ -302,7 +308,7 @@ def new_invoice():
             if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason, _, _ in parsed) or any(category not in INCOME_CATEGORIES or income_type not in INCOME_TYPES for _, _, _, _, category, income_type in parsed): raise ValueError
         except (ValueError, ArithmeticError): flash("Add at least one valid line and an AADE VAT exemption reason for every 0% VAT line.", "error"); return redirect(url_for("new_invoice"))
         total_net, total_vat = sum((net for _, net, _, _, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _, _, _ in parsed), Decimal("0"))
-        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]))
+        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
         db.session.add(invoice)
         db.session.flush()
         for description, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
@@ -310,7 +316,7 @@ def new_invoice():
         db.session.commit(); audit("invoice_draft", f"Created {invoice.number}"); flash("Invoice saved as draft.", "success"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
     priority = ["1.1", "2.1", "11.1", "11.2"]
     ordered_types = dict(sorted(INVOICE_TYPES.items(), key=lambda item: (priority.index(item[0]) if item[0] in priority else 99, item[0])))
-    return render_template("invoice_form.html", today=date.today().isoformat(), clients=Client.query.order_by(Client.name).all(), invoice_types=ordered_types, next_number=setting("invoice_next_number", "1"), series=setting("invoice_series", "A"), exemption_reasons=VAT_EXEMPTION_REASONS, income_categories=INCOME_CATEGORIES, income_types=INCOME_TYPES)
+    return render_template("invoice_form.html", today=date.today().isoformat(), clients=Client.query.order_by(Client.name).all(), invoice_types=ordered_types, next_number=setting("invoice_next_number", "1"), series=setting("invoice_series", "A"), exemption_reasons=VAT_EXEMPTION_REASONS, income_categories=INCOME_CATEGORIES, income_types=INCOME_TYPES, payment_methods=PAYMENT_METHODS)
 
 @app.get("/invoices/<int:invoice_id>")
 def invoice_detail(invoice_id): return render_template("invoice_detail.html", invoice=db.get_or_404(Invoice, invoice_id))
@@ -361,6 +367,8 @@ with app.app_context():
     existing_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice_line")}
     for name, definition in {"income_category": "VARCHAR(30)", "income_type": "VARCHAR(30)"}.items():
         if name not in existing_columns: db.session.execute(text(f"ALTER TABLE invoice_line ADD COLUMN {name} {definition}"))
+    invoice_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice")}
+    if "payment_method" not in invoice_columns: db.session.execute(text("ALTER TABLE invoice ADD COLUMN payment_method VARCHAR(2) DEFAULT '3'"))
     configured_mode = setting("mydata_mode", "")
     if configured_mode and configured_mode not in ENVIRONMENTS: set_setting("mydata_mode", "test")
     db.session.commit()
