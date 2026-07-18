@@ -19,7 +19,7 @@ from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Drawing
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
-from sqlalchemy import func, inspect, text
+from sqlalchemy import func, inspect, or_, text
 
 load_dotenv()
 app = Flask(__name__)
@@ -231,7 +231,8 @@ def transmit(invoice):
     if not lines or any(not line.income_category for line in lines): raise ValueError("Every invoice line requires an income classification before submitting.")
     xml = invoice_xml(invoice)
     config = ENVIRONMENTS.get(mode)
-    user, key = setting("mydata_user_id"), setting("mydata_subscription_key")
+    user = setting(f"mydata_{mode}_user_id") or setting("mydata_user_id")
+    key = setting(f"mydata_{mode}_subscription_key") or setting("mydata_subscription_key")
     if not config: raise ValueError("Choose AADE Test or Production in Settings before submitting.")
     if not user or not key: raise ValueError("AADE credentials are missing. Configure them in Settings before submitting.")
     audit("xml_sent", f"SendInvoices for {invoice.number}", xml.decode())
@@ -274,12 +275,25 @@ def logout(): audit("logout"); session.clear(); return redirect(url_for("login")
 def settings():
     require_admin()
     if request.method == "POST":
-        for key, secret in [("mydata_mode", False), ("mydata_user_id", True), ("mydata_subscription_key", True), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False)]:
+        for key, secret in [("mydata_mode", False), ("mydata_test_user_id", True), ("mydata_test_subscription_key", True), ("mydata_production_user_id", True), ("mydata_production_subscription_key", True), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False)]:
             value = request.form.get(key, "")
             if value or not secret: set_setting(key, value, secret)
         db.session.commit(); audit("settings_updated", "Administrator updated integration and numbering settings"); flash("Settings saved. Secrets are encrypted at rest.", "success"); return redirect(url_for("settings"))
     values = {key: setting(key) for key in ["mydata_mode", "turnstile_sitekey", "invoice_series", "invoice_next_number", "business_vat"]}
-    return render_template("settings.html", values=values, configured={"mydata_user_id": bool(setting("mydata_user_id")), "mydata_subscription_key": bool(setting("mydata_subscription_key")), "turnstile_secret": bool(setting("turnstile_secret"))})
+    configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "turnstile_secret"]}
+    configured["mydata_test_user_id"] |= bool(setting("mydata_user_id"))
+    configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
+    return render_template("settings.html", values=values, configured=configured)
+@app.get("/settings/secrets/<key>")
+def reveal_setting_secret(key):
+    require_admin()
+    allowed = {"mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "turnstile_secret"}
+    if key not in allowed: abort(404)
+    value = setting(key)
+    if not value and key.startswith("mydata_test_"):
+        value = setting("mydata_user_id" if key.endswith("user_id") else "mydata_subscription_key")
+    audit("secret_revealed", f"Administrator revealed {key}")
+    return jsonify(value=value)
 @app.route("/business-settings", methods=["GET", "POST"])
 def business_settings():
     require_admin(); fields = ("business_legal_name", "business_activity", "business_vat", "business_doy", "business_address", "business_email", "business_phone", "business_gemi", "business_website")
@@ -397,7 +411,21 @@ def send_invoice(invoice_id):
     except (ValueError, requests.RequestException) as error: flash(str(error), "error")
     return redirect(url_for("invoice_detail", invoice_id=invoice.id))
 @app.get("/invoices")
-def invoices(): return render_template("invoices.html", invoices=Invoice.query.order_by(Invoice.created_at.desc()).all(), invoice_types=INVOICE_TYPES, payment_methods=PAYMENT_METHODS)
+def invoices():
+    query = Invoice.query
+    term, status, invoice_type, vat = (request.args.get(key, "").strip() for key in ("q", "status", "invoice_type", "vat"))
+    if term: query = query.filter(or_(Invoice.number.ilike(f"%{term}%"), Invoice.customer.ilike(f"%{term}%"), Invoice.vat_number.ilike(f"%{term}%"), Invoice.mydata_mark.ilike(f"%{term}%")))
+    if status in {"draft", "transmitted"}: query = query.filter_by(status=status)
+    if invoice_type in INVOICE_TYPES: query = query.filter_by(invoice_type=invoice_type)
+    if vat: query = query.filter(Invoice.vat_number.ilike(f"%{vat}%"))
+    for key, operator in (("start", ">="), ("end", "<=")):
+        raw = request.args.get(key, "")
+        if raw:
+            try: query = query.filter(Invoice.issue_date >= date.fromisoformat(raw) if operator == ">=" else Invoice.issue_date <= date.fromisoformat(raw))
+            except ValueError: pass
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = query.order_by(Invoice.issue_date.desc(), Invoice.created_at.desc()).paginate(page=page, per_page=15, error_out=False)
+    return render_template("invoices.html", invoices=pagination.items, pagination=pagination, invoice_types=INVOICE_TYPES, payment_methods=PAYMENT_METHODS, filters=request.args, client_suggestions=Client.query.order_by(Client.name).all())
 @app.post("/invoices/<int:invoice_id>/delete")
 def delete_invoice(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
@@ -441,11 +469,16 @@ def clients():
             db.session.commit(); flash(f"{name} verified with VIES and saved.", "success")
         except (ValueError, requests.RequestException) as error: audit("vies_failed", str(error)); flash(f"VIES validation unavailable: {error}", "error")
         return redirect(url_for("clients"))
-    saved_clients = Client.query.order_by(Client.name).all()
+    term = request.args.get("q", "").strip()
+    client_query = Client.query
+    if term: client_query = client_query.filter(or_(Client.name.ilike(f"%{term}%"), Client.vat_number.ilike(f"%{term}%"), Client.gemi_number.ilike(f"%{term}%")))
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = client_query.order_by(Client.name).paginate(page=page, per_page=12, error_out=False)
+    saved_clients = pagination.items
     invoice_counts = {}
     for vat_number, count in db.session.query(Invoice.vat_number, func.count(Invoice.id)).group_by(Invoice.vat_number):
         invoice_counts[vat_number] = count
-    return render_template("clients.html", clients=saved_clients, invoice_counts=invoice_counts)
+    return render_template("clients.html", clients=saved_clients, invoice_counts=invoice_counts, pagination=pagination, filters=request.args, client_suggestions=Client.query.order_by(Client.name).all())
 
 @app.get("/clients/<int:client_id>/invoices")
 def client_invoices(client_id):
