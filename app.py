@@ -205,9 +205,11 @@ def protect_app():
 def invoice_xml(invoice):
     root = Element("InvoicesDoc", {"xmlns": "http://www.aade.gr/myDATA/invoice/v1.0"})
     inv = SubElement(root, "invoice")
-    issuer, counterpart = SubElement(inv, "issuer"), SubElement(inv, "counterpart")
+    issuer = SubElement(inv, "issuer")
     SubElement(issuer, "vatNumber").text, SubElement(issuer, "country").text, SubElement(issuer, "branch").text = setting("business_vat", os.getenv("MYDATA_VAT_NUMBER", "")), "GR", "0"
-    SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text, SubElement(counterpart, "branch").text = invoice.vat_number, "GR", "0"
+    if invoice.invoice_type not in {"11.1", "11.2"}:
+        counterpart = SubElement(inv, "counterpart")
+        SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text, SubElement(counterpart, "branch").text = invoice.vat_number, "GR", "0"
     header = SubElement(inv, "invoiceHeader")
     SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
     SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
