@@ -332,9 +332,12 @@ def invoice_pdf(invoice_id):
     for x, width in [(42, 250), (300, 62), (370, 86), (464, 88)]: canvas.rect(x, 665, width, 48, fill=1, stroke=1)
     canvas.setFillColor(navy); canvas.drawString(52, 695, "Είδος Παραστατικού"); canvas.drawString(52, 678, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)[:38]); canvas.drawString(310, 695, "Σειρά"); canvas.drawString(310, 678, setting("invoice_series", "A")); canvas.drawString(380, 695, "Αριθμός"); canvas.drawString(380, 678, invoice.number); canvas.drawString(474, 695, "Ημερομηνία"); canvas.drawString(474, 678, invoice.issue_date.strftime('%d/%m/%Y'))
     canvas.setFillColor(navy); canvas.rect(42, 630, 510, 22, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.setFont("SiraSans", 10); canvas.drawString(54, 638, "Στοιχεία Πελάτη")
+    saved_client = Client.query.filter_by(vat_number=invoice.vat_number).first()
+    customer_address = invoice.customer_address or (saved_client.address if saved_client else "")
+    customer_profession = invoice.customer_profession or (saved_client.profession if saved_client else "")
     canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 545, 510, 85, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, invoice.customer); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
-    if invoice.customer_address: canvas.drawString(54, 570, f"ΔΙΕΥΘΥΝΣΗ: {invoice.customer_address.replace(chr(10), ', ')[:78]}")
-    if invoice.customer_profession: canvas.drawString(54, 557, f"ΕΠΑΓΓΕΛΜΑ: {invoice.customer_profession}"[:90])
+    if customer_address: canvas.drawString(54, 570, f"ΔΙΕΥΘΥΝΣΗ: {customer_address.replace(chr(10), ', ')[:78]}")
+    if customer_profession: canvas.drawString(54, 557, f"ΕΠΑΓΓΕΛΜΑ: {customer_profession}"[:90])
     y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(380, y+9, "ΚΑΘ. ΑΞΙΑ"); canvas.drawRightString(430, y+9, "ΦΠΑ %"); canvas.drawRightString(480, y+9, "ΦΠΑ €"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
     line_net_total, line_vat_total = Decimal("0"), Decimal("0")
     for index, line in enumerate(pdf_lines, 1):
