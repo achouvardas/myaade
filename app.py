@@ -1,5 +1,6 @@
 import os
 import base64
+from html import escape
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree.ElementTree import Element, SubElement, fromstring, register_namespace, tostring
@@ -294,19 +295,19 @@ def logout(): audit("logout"); session.clear(); return redirect(url_for("login")
 def settings():
     require_admin()
     if request.method == "POST":
-        for key, secret in [("mydata_mode", False), ("mydata_test_user_id", True), ("mydata_test_subscription_key", True), ("mydata_production_user_id", True), ("mydata_production_subscription_key", True), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False)]:
+        for key, secret in [("mydata_mode", False), ("mydata_test_user_id", True), ("mydata_test_subscription_key", True), ("mydata_production_user_id", True), ("mydata_production_subscription_key", True), ("resend_api_key", True), ("resend_sender", False), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False)]:
             value = request.form.get(key, "")
             if value or not secret: set_setting(key, value, secret)
         db.session.commit(); audit("settings_updated", "Administrator updated integration and numbering settings"); flash("Settings saved. Secrets are encrypted at rest.", "success"); return redirect(url_for("settings"))
-    values = {key: setting(key) for key in ["mydata_mode", "turnstile_sitekey", "invoice_series", "invoice_next_number", "business_vat"]}
-    configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "turnstile_secret"]}
+    values = {key: setting(key) for key in ["mydata_mode", "resend_sender", "turnstile_sitekey", "invoice_series", "invoice_next_number", "business_vat"]}
+    configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret"]}
     configured["mydata_test_user_id"] |= bool(setting("mydata_user_id"))
     configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
     return render_template("settings.html", values=values, configured=configured)
 @app.get("/settings/secrets/<key>")
 def reveal_setting_secret(key):
     require_admin()
-    allowed = {"mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "turnstile_secret"}
+    allowed = {"mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret"}
     if key not in allowed: abort(404)
     value = setting(key)
     if not value and key.startswith("mydata_test_"):
@@ -456,6 +457,27 @@ def send_invoice(invoice_id):
     try:
         response = transmit(invoice); invoice.mydata_mark, invoice.invoice_uid, invoice.qr_url, invoice.status = response["mark"], response["uid"], response["qr_url"], "transmitted"; db.session.commit(); flash(f"Submitted successfully — ΜΑΡΚ {invoice.mydata_mark}", "success")
     except (ValueError, requests.RequestException) as error: flash(str(error), "error")
+    return redirect(url_for("invoice_detail", invoice_id=invoice.id))
+@app.post("/invoices/<int:invoice_id>/email")
+def email_invoice(invoice_id):
+    invoice = db.get_or_404(Invoice, invoice_id)
+    recipient = request.form.get("recipient", "").strip()
+    if invoice.status != "transmitted": flash("Only AADE-transmitted invoices can be emailed.", "error"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
+    if not recipient or "@" not in recipient: flash("Enter a valid recipient email address.", "error"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
+    api_key, sender = setting("resend_api_key"), setting("resend_sender")
+    if not api_key or not sender: flash("Configure the Resend API key and sender in Settings before emailing invoices.", "error"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
+    invoice_pdf(invoice.id)
+    pdf_path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf")
+    try:
+        with open(pdf_path, "rb") as pdf_file: encoded_pdf = base64.b64encode(pdf_file.read()).decode()
+        business = setting("business_legal_name", "") or "Your business"
+        invoice_name = INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)
+        html = f"<h2>Νέο παραστατικό από {escape(business)}</h2><p>Προς: {escape(invoice.customer)} · ΑΦΜ: {escape(invoice.vat_number)}</p><p><b>{escape(invoice_name)}</b><br>Σειρά: {escape(setting('invoice_series','A'))} · Αριθμός: {escape(invoice.number)} · Ημερομηνία: {invoice.issue_date.strftime('%d/%m/%Y')}</p><p>Τρόπος πληρωμής: Επί πιστώσει</p><p>UID: {escape(invoice.invoice_uid or '-')}<br>ΜΑΡΚ: {escape(invoice.mydata_mark or '-')}</p><p>Καθαρή αξία: €{invoice.net:.2f}<br>ΦΠΑ: €{invoice.vat_amount:.2f}<br><b>Σύνολο: €{invoice.total:.2f}</b></p><p>Το παρόν διαβιβάστηκε επιτυχώς στο myDATA της ΑΑΔΕ.</p>"
+        payload = {"from": sender, "to": [recipient], "subject": f"{invoice_name} {invoice.number} από {business}", "html": html, "attachments": [{"filename": f"invoice-{invoice.number}.pdf", "content": encoded_pdf}]}
+        response = requests.post("https://api.resend.com/emails", json=payload, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Idempotency-Key": f"elefthero-invoice-{invoice.id}-{recipient}"}, timeout=25); response.raise_for_status()
+        audit("invoice_emailed", f"Invoice {invoice.number} emailed to {recipient}", response.text); flash("Invoice PDF emailed successfully.", "success")
+    except (OSError, requests.RequestException) as error:
+        audit("invoice_email_failed", f"Invoice {invoice.number}: {error}"); flash(f"Could not send the invoice email: {error}", "error")
     return redirect(url_for("invoice_detail", invoice_id=invoice.id))
 @app.get("/invoices")
 def invoices():
