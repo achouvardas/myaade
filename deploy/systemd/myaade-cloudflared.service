@@ -1,0 +1,13 @@
+[Unit]
+Description=myAade Cloudflare Tunnel
+After=network-online.target myaade.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared tunnel --config /root/myaade_erp/cloudflared/config.yml run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

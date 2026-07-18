@@ -1,0 +1,16 @@
+[Unit]
+Description=myAade Flask application
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/myaade_erp
+Environment=MYDATA_MODE=demo
+Environment=FLASK_DEBUG=0
+Environment=PORT=5050
+ExecStart=/root/myaade_erp/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:5050 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
