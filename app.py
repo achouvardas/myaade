@@ -16,6 +16,7 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from werkzeug.security import check_password_hash, generate_password_hash
+from sqlalchemy import inspect, text
 
 load_dotenv()
 app = Flask(__name__)
@@ -33,6 +34,34 @@ ENVIRONMENTS = {
 }
 VAT_CATEGORIES = {"24": "1", "13": "2", "6": "3", "17": "4", "9": "5", "4": "6", "0": "7", "3": "9"}
 VAT_EXEMPTION_REASONS = {str(code): f"AADE exemption reason {code}" for code in range(1, 32)}
+INCOME_CATEGORIES = {
+    "category1_1": "Έσοδα από πώληση εμπορευμάτων",
+    "category1_2": "Έσοδα από πώληση προϊόντων",
+    "category1_3": "Έσοδα από παροχή υπηρεσιών",
+    "category1_4": "Έσοδα από πώληση παγίων",
+    "category1_5": "Λοιπά έσοδα / κέρδη",
+    "category1_6": "Αυτοπαραδόσεις / ιδιοχρησιμοποιήσεις",
+    "category1_7": "Έσοδα για λογαριασμό τρίτων",
+    "category1_8": "Έσοδα προηγούμενων χρήσεων",
+    "category1_9": "Έσοδα επόμενων χρήσεων",
+    "category1_10": "Λοιπές εγγραφές τακτοποίησης εσόδων",
+    "category1_95": "Λοιπά πληροφοριακά στοιχεία εσόδων",
+    "category3": "Διακίνηση",
+}
+INCOME_TYPES = {
+    "E3_561_001": "Πωλήσεις αγαθών και υπηρεσιών χονδρικές",
+    "E3_561_002": "Χονδρικές βάσει άρθρου 39α παρ. 5 ΦΠΑ",
+    "E3_561_003": "Πωλήσεις αγαθών και υπηρεσιών λιανικές",
+    "E3_561_004": "Λιανικές βάσει άρθρου 39α παρ. 5 ΦΠΑ",
+    "E3_561_005": "Πωλήσεις εξωτερικού ενδοκοινοτικές",
+    "E3_561_006": "Πωλήσεις εξωτερικού τρίτες χώρες",
+    "E3_561_007": "Πωλήσεις αγαθών και υπηρεσιών λοιπά",
+    "E3_562": "Λοιπά συνήθη έσοδα",
+    "E3_880_001": "Πωλήσεις παγίων χονδρικές",
+    "E3_880_002": "Πωλήσεις παγίων λιανικές",
+    "E3_880_003": "Πωλήσεις παγίων εξωτερικού ενδοκοινοτικές",
+    "E3_880_004": "Πωλήσεις παγίων εξωτερικού τρίτες χώρες",
+}
 INVOICE_TYPES = {
     "1.1": "Τιμολόγιο Πώλησης", "1.2": "Τιμολόγιο Πώλησης / Ενδοκοινοτικές Παραδόσεις", "1.3": "Τιμολόγιο Πώλησης / Παραδόσεις Τρίτων Χωρών", "1.4": "Τιμολόγιο Πώλησης / Λογαριασμό Τρίτων", "1.5": "Τιμολόγιο Πώλησης / Εκκαθάριση Πωλήσεων Τρίτων", "1.6": "Τιμολόγιο Πώλησης / Συμπληρωματικό", "2.1": "Τιμολόγιο Παροχής", "2.2": "Τιμολόγιο Παροχής / Ενδοκοινοτική", "2.3": "Τιμολόγιο Παροχής / Τρίτη Χώρα", "2.4": "Τιμολόγιο Παροχής / Συμπληρωματικό", "3.1": "Τίτλος Κτήσης (μη υπόχρεος Εκδότης)", "3.2": "Τίτλος Κτήσης (άρνηση έκδοσης)", "5.1": "Πιστωτικό Τιμολόγιο / Συσχετιζόμενο", "5.2": "Πιστωτικό Τιμολόγιο / Μη Συσχετιζόμενο", "6.1": "Στοιχείο Αυτοπαράδοσης", "6.2": "Στοιχείο Ιδιοχρησιμοποίησης", "7.1": "Συμβόλαιο - Έσοδο", "8.1": "Ενοίκια - Έσοδο", "8.2": "Τέλος ανθεκτικότητας κλιματικής κρίσης", "8.4": "Απόδειξη Είσπραξης POS", "8.5": "Απόδειξη Επιστροφής POS", "8.6": "Δελτίο Παραγγελίας Εστίασης", "9.1": "Δελτίο Αποστολής Συσχετιζόμενο", "9.2": "Συγκεντρωτικό Δελτίο Αποστολής", "9.3": "Δελτίο Αποστολής", "10.1": "Δελτίο Ποσοτικής Παραλαβής Συσχετιζόμενο", "10.2": "Δελτίο Ποσοτικής Παραλαβής Μη Συσχετιζόμενο", "11.1": "ΑΛΠ", "11.2": "ΑΠΥ", "11.3": "Απλοποιημένο Τιμολόγιο", "11.4": "Πιστωτικό Στοιχ. Λιανικής", "11.5": "Απόδειξη Λιανικής για Λογαριασμό Τρίτων", "13.1": "Έξοδα - Αγορές Λιανικών", "13.2": "Παροχή Λιανικών", "13.3": "Κοινόχρηστα", "13.4": "Συνδρομές", "13.30": "Παραστατικά Οντότητας ως Αναγράφονται", "13.31": "Πιστωτικό Στοιχ. Λιανικής", "14.1": "Τιμολόγιο / Ενδοκοινοτικές Αποκτήσεις", "14.2": "Τιμολόγιο / Αποκτήσεις Τρίτων Χωρών", "14.3": "Τιμολόγιο / Ενδοκοινοτική Λήψη Υπηρεσιών", "14.4": "Τιμολόγιο / Λήψη Υπηρεσιών Τρίτων Χωρών", "14.5": "ΕΦΚΑ και λοιποί Ασφαλιστικοί Οργανισμοί", "14.30": "Παραστατικά Οντότητας ως Αναγράφονται", "14.31": "Πιστωτικό ημεδαπής / αλλοδαπής", "15.1": "Συμβόλαιο - Έξοδο", "16.1": "Ενοίκιο Έξοδο", "17.1": "Μισθοδοσία", "17.2": "Αποσβέσεις", "17.3": "Λοιπές Εγγραφές Τακτοποίησης Εσόδων - Λογιστική Βάση", "17.4": "Λοιπές Εγγραφές Τακτοποίησης Εσόδων - Φορολογική Βάση", "17.5": "Λοιπές Εγγραφές Τακτοποίησης Εξόδων - Λογιστική Βάση", "17.6": "Λοιπές Εγγραφές Τακτοποίησης Εξόδων - Φορολογική Βάση",
 }
@@ -67,6 +96,8 @@ class InvoiceLine(db.Model):
     net = db.Column(db.Numeric(12, 2), nullable=False)
     vat_rate = db.Column(db.Numeric(5, 2), nullable=False, default=24)
     vat_exemption_reason = db.Column(db.String(3))
+    income_category = db.Column(db.String(30))
+    income_type = db.Column(db.String(30))
 
 class Client(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -144,7 +175,7 @@ def invoice_xml(invoice):
     SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
     SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
     lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).order_by(InvoiceLine.id).all()
-    if not lines: lines = [type("LegacyLine", (), {"net": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None})()]
+    if not lines: lines = [type("LegacyLine", (), {"net": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None, "income_category": None, "income_type": None})()]
     total_net, total_vat = Decimal("0"), Decimal("0")
     for number, line in enumerate(lines, 1):
         details = SubElement(inv, "invoiceDetails"); vat_rate = Decimal(line.vat_rate); vat_amount = Decimal(line.net) * vat_rate / 100
@@ -152,11 +183,24 @@ def invoice_xml(invoice):
         vat_key = str(int(vat_rate)) if vat_rate == vat_rate.to_integral() else str(vat_rate)
         SubElement(details, "vatCategory").text, SubElement(details, "vatAmount").text = VAT_CATEGORIES.get(vat_key, "7"), f"{vat_amount:.2f}"
         if vat_rate == 0: SubElement(details, "vatExemptionCategory").text = line.vat_exemption_reason
+        if line.income_category:
+            classification = SubElement(details, "incomeClassification")
+            if line.income_type: SubElement(classification, "classificationType").text = line.income_type
+            SubElement(classification, "classificationCategory").text, SubElement(classification, "amount").text = line.income_category, f"{line.net:.2f}"
         total_net += Decimal(line.net); total_vat += vat_amount
     summary = SubElement(inv, "invoiceSummary")
     SubElement(summary, "totalNetValue").text, SubElement(summary, "totalVatAmount").text = f"{total_net:.2f}", f"{total_vat:.2f}"
     for field in ("totalWithheldAmount", "totalFeesAmount", "totalStampDutyAmount", "totalOtherTaxesAmount", "totalDeductionsAmount"): SubElement(summary, field).text = "0.00"
     SubElement(summary, "totalGrossValue").text = f"{total_net + total_vat:.2f}"
+    classifications = {}
+    for line in lines:
+        if line.income_category:
+            key = (line.income_type or "", line.income_category)
+            classifications[key] = classifications.get(key, Decimal("0")) + Decimal(line.net)
+    for (income_type, income_category), amount in classifications.items():
+        classification = SubElement(summary, "incomeClassification")
+        if income_type: SubElement(classification, "classificationType").text = income_type
+        SubElement(classification, "classificationCategory").text, SubElement(classification, "amount").text = income_category, f"{amount:.2f}"
     return tostring(root, encoding="utf-8", xml_declaration=True)
 
 def transmit(invoice):
@@ -250,21 +294,22 @@ def new_invoice():
         invoice_type = request.form["invoice_type"]
         if invoice_type not in INVOICE_TYPES: flash("Invalid AADE invoice type.", "error"); return redirect(url_for("new_invoice"))
         descriptions, nets, rates, reasons = request.form.getlist("line_description"), request.form.getlist("line_net"), request.form.getlist("line_vat_rate"), request.form.getlist("line_vat_exemption_reason")
+        income_categories, income_types = request.form.getlist("line_income_category"), request.form.getlist("line_income_type")
         try:
-            parsed = [(description, Decimal(net), Decimal(rate), reason if Decimal(rate) == 0 else None) for description, net, rate, reason in zip(descriptions, nets, rates, reasons)]
-            if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason in parsed): raise ValueError
+            parsed = [(description, Decimal(net), Decimal(rate), reason if Decimal(rate) == 0 else None, category, income_type) for description, net, rate, reason, category, income_type in zip(descriptions, nets, rates, reasons, income_categories, income_types)]
+            if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason, _, _ in parsed) or any(category not in INCOME_CATEGORIES or income_type not in INCOME_TYPES for _, _, _, _, category, income_type in parsed): raise ValueError
         except (ValueError, ArithmeticError): flash("Add at least one valid line and an AADE VAT exemption reason for every 0% VAT line.", "error"); return redirect(url_for("new_invoice"))
-        total_net, total_vat = sum((net for _, net, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _ in parsed), Decimal("0"))
+        total_net, total_vat = sum((net for _, net, _, _, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _, _, _ in parsed), Decimal("0"))
         retail = invoice_type in {"11.1", "11.2"}
         invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]))
         db.session.add(invoice)
         db.session.flush()
-        for description, net, rate, reason in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason))
+        for description, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
         if request.form["number"].isdigit(): set_setting("invoice_next_number", str(int(request.form["number"]) + 1))
         db.session.commit(); audit("invoice_draft", f"Created {invoice.number}"); flash("Invoice saved as draft.", "success"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
     priority = ["1.1", "2.1", "11.1", "11.2"]
     ordered_types = dict(sorted(INVOICE_TYPES.items(), key=lambda item: (priority.index(item[0]) if item[0] in priority else 99, item[0])))
-    return render_template("invoice_form.html", today=date.today().isoformat(), clients=Client.query.order_by(Client.name).all(), invoice_types=ordered_types, next_number=setting("invoice_next_number", "1"), series=setting("invoice_series", "A"), exemption_reasons=VAT_EXEMPTION_REASONS)
+    return render_template("invoice_form.html", today=date.today().isoformat(), clients=Client.query.order_by(Client.name).all(), invoice_types=ordered_types, next_number=setting("invoice_next_number", "1"), series=setting("invoice_series", "A"), exemption_reasons=VAT_EXEMPTION_REASONS, income_categories=INCOME_CATEGORIES, income_types=INCOME_TYPES)
 
 @app.get("/invoices/<int:invoice_id>")
 def invoice_detail(invoice_id): return render_template("invoice_detail.html", invoice=db.get_or_404(Invoice, invoice_id))
@@ -312,6 +357,11 @@ def set_locale(code): session["locale"] = code if code in COPY else "en"; return
 @app.get("/health")
 def health(): return jsonify(status="ok", mode=current_mode(), database="sqlite")
 
-with app.app_context(): db.create_all()
+with app.app_context():
+    db.create_all()
+    existing_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice_line")}
+    for name, definition in {"income_category": "VARCHAR(30)", "income_type": "VARCHAR(30)"}.items():
+        if name not in existing_columns: db.session.execute(text(f"ALTER TABLE invoice_line ADD COLUMN {name} {definition}"))
+    db.session.commit()
 if __name__ == "__main__":
     app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1", host="127.0.0.1", port=int(os.getenv("PORT", "5000")))
