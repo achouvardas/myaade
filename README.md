@@ -13,6 +13,8 @@
 
 Elefthero (Ελεύθερο) is a self-hosted, bilingual invoicing workspace for Greek small businesses. It makes AADE myDATA reporting understandable, inspectable, and accessible—without locking a business into an expensive proprietary accounting platform.
 
+The myDATA invoice integration is built against the official AADE ERP API reference: [myDATA API Documentation v2.0.2 (June 2026)](https://www.aade.gr/sites/default/files/2026-06/myDATA%20API%20Documentation%20v2.0.2_preofficial_erp.pdf).
+
 ## Why Elefthero
 
 Greek invoicing software is often costly, opaque, and built around long contracts. Elefthero is an open-source alternative: the business controls its data, can inspect every XML submission, and can run the application on its own server.
