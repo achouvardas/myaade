@@ -48,6 +48,26 @@ flowchart TD
 - User management and Cloudflare Turnstile login protection
 - Developer log with sent and received XML
 - PDF invoice with business identity, payment method, UID, ΜΑΡΚ and AADE QR URL
+- Invoice templates and editable draft reuse for recurring work
+- Dashboard totals, transmitted VAT and top-customer reporting
+- Manual delivery of transmitted invoice PDFs through securely configured Resend
+
+## Product map
+
+```mermaid
+flowchart LR
+  A[Clients: VIES / ΓΕΜΗ] --> B[Invoice editor]
+  T[Templates / reuse] --> B
+  B --> C[myDATA XML + AADE submission]
+  C --> D[MARK / UID / QR / audit XML]
+  D --> E[PDF invoice]
+  E --> F[Optional manual Resend delivery]
+  D --> G[Dashboard and client analytics]
+```
+
+## Important disclaimer
+
+Elefthero is open-source software provided on an “as is” basis. It is not accounting, tax, legal, or professional advice, and it does not replace review by a qualified accountant. AADE may change its myDATA APIs, schemas, validation rules, operational requirements, or services at any time; such changes can affect integrations, submissions, and results. You are solely responsible for validating configuration, invoices, submissions, records, and compliance before using the software in Test or Production. The project maintainer/developer accepts no obligation or liability for business, accounting, tax, technical, submission, data, or compliance outcomes arising from use of the software. Always consult your accountant or another appropriately qualified professional for your specific circumstances.
 
 ## Run locally
 
