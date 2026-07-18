@@ -4,6 +4,7 @@
 
 - Python 3.11+ and `venv`
 - Git
+- FFmpeg for the optional in-app Devpost MP4 export (`ffmpeg` package)
 - For production: systemd and a non-root deployment user (recommended)
 - Optional public access: `cloudflared`, a Cloudflare account, and a hostname routed to a named tunnel
 
@@ -115,3 +116,9 @@ sudo systemctl restart elefthero.service
 .venv/bin/python -m py_compile app.py
 git diff --check
 ```
+
+## Recording the Devpost demonstration
+
+Sign in as an administrator and open **Demo** from the navigation. The timed run combines the landing-page presentation with a guided tour of the application and uses browser text-to-speech for audio. Choose **Record and export MP4**, select **This tab** in Chrome or Edge, and enable **Share tab audio**. At the end, Elefthero uploads the WebM recording to the server and uses FFmpeg to download an MP4.
+
+Review the recording before publishing it. Uploading it to YouTube is intentionally manual: it requires the project owner to authorize their own account and select public visibility.

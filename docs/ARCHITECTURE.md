@@ -70,3 +70,17 @@ flowchart LR
   VIES --> Log[Activity log]
   GEMI --> Log
 ```
+
+## Demonstration export service
+
+```mermaid
+flowchart LR
+  Guide[Admin guided tour] --> TTS[Browser text-to-speech]
+  Guide --> Capture[Browser tab capture with user consent]
+  Capture --> Upload[CSRF-protected MP4 export endpoint]
+  Upload --> FFmpeg[FFmpeg H.264/AAC conversion]
+  FFmpeg --> Download[Local MP4 download]
+  Download --> YouTube[Manual upload by project owner]
+```
+
+The browser must be allowed to share the current tab and its audio. Elefthero does not receive YouTube credentials or publish videos automatically.

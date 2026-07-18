@@ -41,3 +41,10 @@
 - AADE credentials, Resend key, Turnstile secret, and TOTP seeds are encrypted at rest using a local Fernet key.
 - Developer log records XML, sign-in events, client lookups, PDF generation, cancellation, email, template actions, and sensitive-setting reveals.
 - Accessibility pop-up provides text scaling, high contrast, readable spacing, underlined links, reduced motion, visible focus outlines, and browser-local preferences. It is WCAG 2.1-oriented and does not claim full conformance.
+
+## Devpost demonstration mode
+
+- Administrators can open **Demo** to run a timed presentation designed to remain below the three-minute Devpost limit: approximately one minute of the GitHub Pages project story followed by a guided tour of the dashboard, invoices, clients, templates, business profile, settings, users, 2FA, and developer log.
+- The browser narrates the tour with text-to-speech, including how Codex and GPT-5.6 were used to implement and refine the product.
+- To export, the presenter chooses **Record and export MP4**, selects the current browser tab, and enables tab audio. The browser records the visible demonstration; the server converts the uploaded WebM recording to an H.264/AAC MP4 with FFmpeg.
+- Uploading the resulting video to YouTube remains a deliberate manual step by the account owner, because it requires their YouTube authorization and visibility choice.

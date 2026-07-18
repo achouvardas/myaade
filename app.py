@@ -3,6 +3,9 @@ import base64
 import io
 import hmac
 import secrets
+import subprocess
+import tempfile
+import uuid
 from html import escape
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -479,6 +482,27 @@ def delete_user(user_id):
     return redirect(url_for("users"))
 @app.get("/logs")
 def logs(): require_admin(); return render_template("logs.html", logs=ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all())
+@app.get("/demo")
+def demo():
+    require_admin(); return render_template("demo.html", presentation_url="https://achouvardas.github.io/Elefthero/presentation.html")
+@app.post("/demo/export")
+def export_demo_video():
+    require_admin()
+    recording = request.files.get("video")
+    if not recording or not recording.filename: abort(400, "A screen recording is required.")
+    if request.content_length and request.content_length > 300 * 1024 * 1024: abort(413, "The recording is too large. Keep the demo under three minutes.")
+    token = uuid.uuid4().hex; input_path = os.path.join(tempfile.gettempdir(), f"elefthero-demo-{token}.webm"); output_path = os.path.join(tempfile.gettempdir(), f"elefthero-demo-{token}.mp4")
+    try:
+        recording.save(input_path)
+        subprocess.run(["ffmpeg", "-y", "-i", input_path, "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", output_path], check=True, capture_output=True, timeout=360)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        for path in (input_path, output_path):
+            if os.path.exists(path): os.remove(path)
+        audit("demo_export_failed", str(error)); abort(500, "Could not convert the recording to MP4.")
+    response = send_file(output_path, as_attachment=True, download_name="elefthero-demo.mp4", mimetype="video/mp4")
+    response.call_on_close(lambda: [os.path.exists(path) and os.remove(path) for path in (input_path, output_path)])
+    audit("demo_exported", "MP4 demonstration recording exported")
+    return response
 @app.get("/logs/<int:log_id>/xml")
 def view_xml_log(log_id):
     require_admin(); log = db.get_or_404(ActivityLog, log_id)

@@ -37,6 +37,7 @@ Elefthero is intentionally focused, but complete enough for day-to-day small-bus
 - Saved clients with VIES validation, optional ΓΕΜΗ enrichment, reusable addresses, filters, pagination, and invoice-by-type statistics.
 - Templates, editable “reuse as new draft”, dashboard totals, top customers, and client analytics.
 - Secure setup, encrypted settings, user roles, server-enforced CSRF protection, configurable login rate limiting, optional Cloudflare Turnstile, optional authenticator-app 2FA, audit logs, and accessibility controls.
+- An administrator-only Devpost demonstration mode: one minute of landing-page story followed by a guided app tour, browser text-to-speech narration, and presenter-assisted MP4 export.
 
 Read the complete [feature reference](docs/FEATURES.md).
 

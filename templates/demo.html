@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="max-w-5xl mx-auto space-y-6">
+  <div class="rounded-2xl border border-cyan-200 bg-cyan-50 p-6">
+    <p class="text-xs font-bold uppercase tracking-widest text-cyan-800">Devpost recording studio</p>
+    <h1 class="mt-2 text-3xl font-bold">Elefthero demonstration mode</h1>
+    <p class="mt-3 max-w-3xl text-slate-700">A guided, narrated run designed for the hackathon: about one minute of the project story, then a clear tour of the live application. Total runtime is kept below three minutes.</p>
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-3">
+    <div class="rounded-xl border bg-white p-4"><p class="font-semibold">1. Start the tour</p><p class="mt-1 text-sm text-slate-600">Text-to-speech narrates the story, navigation, and key workflows.</p></div>
+    <div class="rounded-xl border bg-white p-4"><p class="font-semibold">2. Record this tab</p><p class="mt-1 text-sm text-slate-600">Choose “This tab” and enable “Share tab audio” when your browser asks.</p></div>
+    <div class="rounded-xl border bg-white p-4"><p class="font-semibold">3. Review and publish</p><p class="mt-1 text-sm text-slate-600">Download MP4, review it, then upload it publicly to YouTube yourself.</p></div>
+  </div>
+
+  <div class="rounded-2xl border bg-white overflow-hidden shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-5 py-4">
+      <div><p id="step-title" class="font-bold">Ready to begin</p><p id="step-meta" class="text-sm text-slate-600">0:00 / 2:58</p></div>
+      <div class="flex flex-wrap gap-2">
+        <button id="start-demo" class="rounded-lg bg-cyan-700 px-4 py-2 font-semibold text-white">Start tour</button>
+        <button id="pause-demo" class="rounded-lg border px-4 py-2 font-semibold">Pause</button>
+        <button id="restart-demo" class="rounded-lg border px-4 py-2 font-semibold">Restart</button>
+        <button id="record-demo" class="rounded-lg border border-cyan-700 px-4 py-2 font-semibold text-cyan-800">Record &amp; export MP4</button>
+      </div>
+    </div>
+    <div class="bg-slate-100 p-3"><iframe id="demo-frame" title="Elefthero guided demonstration" class="h-[650px] w-full rounded-lg border bg-white" src="{{ presentation_url }}?slide=1"></iframe></div>
+    <div id="demo-status" role="status" class="border-t px-5 py-3 text-sm text-slate-600">The recording control asks permission before capturing anything.</div>
+  </div>
+</section>
+
+<script>
+(() => {
+  const presentation = {{ presentation_url|tojson }};
+  const steps = [
+    {title: 'Elefthero: the open-source way to invoice in Greece', url: `${presentation}?slide=1`, seconds: 8, narration: 'Elefthero is the open-source way to invoice in Greece. It gives small businesses a simple, self-hosted way to understand and control their invoicing data.'},
+    {title: 'Why this matters', url: `${presentation}?slide=2`, seconds: 8, narration: 'Greek businesses must transmit invoice data to AADE myDATA. Many existing choices are expensive, opaque, or difficult to adapt to everyday work.'},
+    {title: 'Freedom, openness, accessibility', url: `${presentation}?slide=3`, seconds: 8, narration: 'Elefthero means free. It is MIT licensed, self-hosted, bilingual, and designed so that sent and received AADE XML can be inspected.'},
+    {title: 'AADE workflow', url: `${presentation}?slide=4`, seconds: 8, narration: 'The app validates invoice data, builds myDATA XML, transmits to AADE Test or Production, then retains the response, MARK, UID, and QR URL.'},
+    {title: 'Built with Codex and GPT-5.6', url: `${presentation}?slide=5`, seconds: 10, narration: 'Codex and GPT-5.6 were hands-on implementation partners: turning AADE validation errors into XML fixes, building Flask workflows, and refining the product through live feedback.'},
+    {title: 'A real, inspectable product', url: `${presentation}?slide=6`, seconds: 18, narration: 'This is not a mockup. Elefthero has real AADE Test and Production modes, local encrypted settings, PDFs, client tools, and audit logs.'},
+    {title: 'Dashboard', url: '/', seconds: 13, narration: 'The dashboard gives a small business an immediate view of transmitted turnover, VAT, drafts, recent invoices, and top customers. The navigation keeps every daily task close.'},
+    {title: 'Invoice list and search', url: '/invoices', seconds: 13, narration: 'Invoices are searchable by customer name and VAT number, with status, document type, amounts, AADE identifiers, filtering, and links to the full record.'},
+    {title: 'New multi-line invoice', url: '/invoices/new', seconds: 16, narration: 'New invoices keep the form focused: choose one of the supported document types, select or add a customer when appropriate, add multiple lines, VAT, payment method, and required income classification.'},
+    {title: 'Saved clients', url: '/clients', seconds: 12, narration: 'Clients are reusable and searchable. The workflow can validate Greek VAT numbers through VIES and optionally enrich records through the public GEMI service when it is available.'},
+    {title: 'Templates and reuse', url: '/templates', seconds: 12, narration: 'Templates and reuse reduce repeated work. A transmitted invoice can become an editable fresh draft or a named template without copying sensitive submission identifiers.'},
+    {title: 'Business profile and settings', url: '/business-settings', seconds: 10, narration: 'Business Profile controls the identity printed on PDFs. Settings keeps AADE Test and Production credentials separate, encrypted locally, alongside email, security, and service configuration.'},
+    {title: 'Secure access', url: '/users', seconds: 10, narration: 'Administrators manage local users and roles. Optional Turnstile, configurable login rate limits, CSRF protection, and authenticator-app two factor authentication protect real business workflows.'},
+    {title: 'Security settings and two factor authentication', url: '/settings', seconds: 10, narration: 'Security settings make the rate limits and optional services explicit, while the two factor page lets each user enrol a standard authenticator app with a QR code.'},
+    {title: 'Authenticator setup', url: '/two-factor/setup', seconds: 10, narration: 'Two factor authentication is optional, user controlled, and stored encrypted at rest. It protects access without forcing a third-party identity provider.'},
+    {title: 'Developer log and XML evidence', url: '/logs', seconds: 12, narration: 'Finally, the developer log makes the integration inspectable: sign-in events, client lookups, PDF generation, sent XML, received XML, and AADE errors remain visible for troubleshooting.'}
+  ];
+  const totalSeconds = steps.reduce((sum, step) => sum + step.seconds, 0);
+  const frame = document.getElementById('demo-frame');
+  const title = document.getElementById('step-title');
+  const meta = document.getElementById('step-meta');
+  const status = document.getElementById('demo-status');
+  const start = document.getElementById('start-demo');
+  const pause = document.getElementById('pause-demo');
+  const restart = document.getElementById('restart-demo');
+  const record = document.getElementById('record-demo');
+  let index = 0, elapsed = 0, timer = null, running = false, recorder = null, chunks = [], stream = null;
+  const format = seconds => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  const update = () => { const step = steps[index] || steps.at(-1); title.textContent = step ? step.title : 'Tour complete'; meta.textContent = `${format(elapsed)} / ${format(totalSeconds)}`; };
+  const narrate = text => { if (!('speechSynthesis' in window)) return; window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'en-US'; utterance.rate = 1.06; window.speechSynthesis.speak(utterance); };
+  const stopTimer = () => { if (timer) window.clearTimeout(timer); timer = null; running = false; };
+  const finish = () => { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); title.textContent = 'Tour complete'; meta.textContent = `${format(totalSeconds)} / ${format(totalSeconds)}`; status.textContent = recorder && recorder.state === 'recording' ? 'Tour complete. Converting your recording to MP4…' : 'Tour complete. Review it, then record again or export a fresh take.'; if (recorder && recorder.state === 'recording') recorder.stop(); };
+  const run = () => { if (index >= steps.length) return finish(); const step = steps[index]; running = true; frame.src = step.url; update(); status.textContent = `Showing ${step.title}.`; narrate(step.narration); timer = window.setTimeout(() => { elapsed += step.seconds; index += 1; run(); }, step.seconds * 1000); };
+  const begin = () => { if (running) return; if (index >= steps.length) { index = 0; elapsed = 0; } run(); };
+  const reset = () => { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); index = 0; elapsed = 0; frame.src = steps[0].url; update(); status.textContent = 'Ready to begin.'; };
+  const downloadMp4 = async () => {
+    status.textContent = 'Uploading the screen recording and converting it to MP4…';
+    const form = new FormData(); form.append('video', new Blob(chunks, {type: 'video/webm'}), 'elefthero-demo.webm');
+    try {
+      const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+      const response = await fetch({{ url_for('export_demo_video')|tojson }}, {method: 'POST', headers: {'X-CSRF-Token': token}, body: form});
+      if (!response.ok) throw new Error(await response.text());
+      const blob = await response.blob(), link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'elefthero-demo.mp4'; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href); status.textContent = 'MP4 downloaded. Review it before uploading it publicly to YouTube.';
+    } catch (error) { status.textContent = `MP4 export failed: ${error.message || 'unknown error'}`; }
+    finally { stream?.getTracks().forEach(track => track.stop()); stream = null; recorder = null; chunks = []; record.disabled = false; }
+  };
+  start.addEventListener('click', begin);
+  pause.addEventListener('click', () => { if (running) { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.pause(); pause.textContent = 'Resume'; status.textContent = 'Tour paused.'; } else { if ('speechSynthesis' in window) window.speechSynthesis.resume(); pause.textContent = 'Pause'; begin(); } });
+  restart.addEventListener('click', reset);
+  record.addEventListener('click', async () => {
+    if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) { status.textContent = 'This browser cannot record a screen share. Use a current Chrome or Edge browser.'; return; }
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: true}); chunks = [];
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+      recorder = new MediaRecorder(stream, {mimeType}); recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); }; recorder.onstop = downloadMp4;
+      stream.getVideoTracks()[0].addEventListener('ended', () => { if (recorder?.state === 'recording') recorder.stop(); }); recorder.start(1000); record.disabled = true; status.textContent = 'Recording. Keep this tab selected and let the guided tour complete.'; reset(); begin();
+    } catch (_) { status.textContent = 'Screen-recording permission was not granted.'; }
+  });
+  update();
+})();
+</script>
+{% endblock %}
