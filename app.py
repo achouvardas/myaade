@@ -415,10 +415,12 @@ def new_invoice():
         payment_method = request.form.get("payment_method", "3")
         if payment_method not in PAYMENT_METHODS: flash("Choose a valid AADE payment method.", "error"); return redirect(url_for("new_invoice"))
         correlated_mark = request.form.get("correlated_mark", "").strip()
-        if invoice_type == "5.1":
-            original = Invoice.query.filter(Invoice.status == "transmitted", Invoice.invoice_type.in_(["1.1", "2.1"]), Invoice.mydata_mark == correlated_mark).first()
+        credit_original_types = {"5.1": ["1.1", "2.1"], "11.4": ["11.1", "11.2"]}
+        if invoice_type in credit_original_types:
+            original = Invoice.query.filter(Invoice.status == "transmitted", Invoice.invoice_type.in_(credit_original_types[invoice_type]), Invoice.mydata_mark == correlated_mark).first()
             if not original:
-                flash("For 5.1 select a transmitted 1.1 or 2.1 invoice MARK.", "error")
+                expected_types = " or ".join(credit_original_types[invoice_type])
+                flash(f"For {invoice_type} select a transmitted {expected_types} invoice MARK.", "error")
                 return redirect(url_for("new_invoice"))
         retail = invoice_type in {"11.1", "11.2", "11.3", "11.4", "11.5"}
         default_income_category = "category1_3"
@@ -434,7 +436,7 @@ def new_invoice():
         exemption_notes = list(dict.fromkeys(VAT_EXEMPTION_REASONS[reason] for _, _, _, _, rate, reason, _, _ in parsed if rate == 0 and reason))
         notes = request.form.get("notes", "").strip()
         if exemption_notes: notes = f"{notes} - {' · '.join(exemption_notes)}" if notes else " · ".join(exemption_notes)
-        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, customer_profession=customer_profession, notes=notes, correlated_mark=correlated_mark if invoice_type == "5.1" else None, description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
+        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, customer_profession=customer_profession, notes=notes, correlated_mark=correlated_mark if invoice_type in credit_original_types else None, description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
         db.session.add(invoice)
         db.session.flush()
         for description, quantity, unit_price, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, quantity=quantity, unit_price=unit_price, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
@@ -447,9 +449,9 @@ def new_invoice():
         source = db.get_or_404(Invoice, request.args.get("from_invoice", type=int)); source_lines = InvoiceLine.query.filter_by(invoice_id=source.id).all()
         seed = {"invoice_type": source.invoice_type, "payment_method": source.payment_method, "customer": source.customer, "vat_number": source.vat_number, "customer_address": source.customer_address or "", "customer_profession": source.customer_profession or "", "notes": source.notes or "", "lines": [{"description": line.description, "quantity": str(line.quantity), "unit_price": str(line.unit_price), "vat_rate": format(Decimal(line.vat_rate), "g"), "reason": line.vat_exemption_reason or "", "category": line.income_category or "category1_3", "income_type": line.income_type or "E3_561_001"} for line in source_lines]}
     credit_sources = []
-    for source in Invoice.query.filter(Invoice.status == "transmitted", Invoice.invoice_type.in_(["1.1", "2.1"]), Invoice.mydata_mark.isnot(None)).order_by(Invoice.issue_date.desc(), Invoice.id.desc()).all():
+    for source in Invoice.query.filter(Invoice.status == "transmitted", Invoice.invoice_type.in_(["1.1", "2.1", "11.1", "11.2"]), Invoice.mydata_mark.isnot(None)).order_by(Invoice.issue_date.desc(), Invoice.id.desc()).all():
         source_lines = InvoiceLine.query.filter_by(invoice_id=source.id).order_by(InvoiceLine.id).all()
-        credit_sources.append({"mark": source.mydata_mark, "label": f"{source.mydata_mark} — {source.invoice_type} · {INVOICE_TYPES.get(source.invoice_type, '')} · {source.customer} ({source.vat_number})", "customer": source.customer, "vat_number": source.vat_number, "customer_address": source.customer_address or "", "customer_profession": source.customer_profession or "", "payment_method": source.payment_method, "lines": [{"description": line.description, "quantity": str(line.quantity), "unit_price": str(line.unit_price), "vat_rate": format(Decimal(line.vat_rate), "g"), "reason": line.vat_exemption_reason or "", "category": line.income_category or "category1_3", "income_type": line.income_type or "E3_561_001"} for line in source_lines]})
+        credit_sources.append({"mark": source.mydata_mark, "invoice_type": source.invoice_type, "label": f"{source.mydata_mark} — {source.invoice_type} · {INVOICE_TYPES.get(source.invoice_type, '')} · {source.customer} ({source.vat_number})", "customer": source.customer, "vat_number": source.vat_number, "customer_address": source.customer_address or "", "customer_profession": source.customer_profession or "", "payment_method": source.payment_method, "lines": [{"description": line.description, "quantity": str(line.quantity), "unit_price": str(line.unit_price), "vat_rate": format(Decimal(line.vat_rate), "g"), "reason": line.vat_exemption_reason or "", "category": line.income_category or "category1_3", "income_type": line.income_type or "E3_561_001"} for line in source_lines]})
     return render_template("invoice_form.html", today=date.today().isoformat(), clients=Client.query.order_by(Client.name).all(), invoice_types=ordered_types, next_number=setting("invoice_next_number", "1"), series=setting("invoice_series", "A"), exemption_reasons=VAT_EXEMPTION_REASONS, income_categories=INCOME_CATEGORIES, income_types=INCOME_TYPES, payment_methods=PAYMENT_METHODS, seed=seed, credit_sources=credit_sources)
 
 @app.get("/invoices/<int:invoice_id>")
