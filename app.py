@@ -485,6 +485,13 @@ def logs(): require_admin(); return render_template("logs.html", logs=ActivityLo
 @app.get("/demo")
 def demo():
     require_admin(); return render_template("demo.html", presentation_url="https://achouvardas.github.io/Elefthero/presentation.html")
+@app.get("/demo/audio/<int:step>")
+def demo_audio(step):
+    require_admin()
+    if step < 0 or step > 15: abort(404)
+    path = os.path.join(app.instance_path, "demo-audio", f"step-{step:02d}.mp3")
+    if not os.path.isfile(path): abort(404, "Demo narration has not been generated on this server.")
+    return send_file(path, mimetype="audio/mpeg", conditional=True, max_age=3600)
 @app.post("/demo/export")
 def export_demo_video():
     require_admin()

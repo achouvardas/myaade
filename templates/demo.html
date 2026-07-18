@@ -8,7 +8,7 @@
   </div>
 
   <div class="grid gap-4 md:grid-cols-3">
-    <div class="rounded-xl border bg-white p-4"><p class="font-semibold">1. Start the tour</p><p class="mt-1 text-sm text-slate-600">A friendly, natural system voice narrates the story, navigation, and key workflows.</p></div>
+    <div class="rounded-xl border bg-white p-4"><p class="font-semibold">1. Start the tour</p><p class="mt-1 text-sm text-slate-600">A warm, local open-source voice narrates the story, navigation, and key workflows.</p></div>
     <div class="rounded-xl border bg-white p-4"><p class="font-semibold">2. Record this tab</p><p class="mt-1 text-sm text-slate-600">Choose “This tab” and enable “Share tab audio” when your browser asks.</p></div>
     <div class="rounded-xl border bg-white p-4"><p class="font-semibold">3. Review and publish</p><p class="mt-1 text-sm text-slate-600">Download MP4, review it, then upload it publicly to YouTube yourself.</p></div>
   </div>
@@ -59,21 +59,17 @@
   const pause = document.getElementById('pause-demo');
   const restart = document.getElementById('restart-demo');
   const record = document.getElementById('record-demo');
-  let index = 0, elapsed = 0, timer = null, running = false, recorder = null, chunks = [], stream = null, preferredVoice = null;
+  const narration = new Audio();
+  narration.preload = 'auto';
+  let index = 0, elapsed = 0, timer = null, running = false, recorder = null, chunks = [], stream = null;
   const format = seconds => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   const update = () => { const step = steps[index] || steps.at(-1); title.textContent = step ? step.title : 'Tour complete'; meta.textContent = `${format(elapsed)} / ${format(totalSeconds)}`; };
-  const selectVoice = () => {
-    if (!('speechSynthesis' in window)) return;
-    const voices = window.speechSynthesis.getVoices();
-    const friendlyNames = /zira|jenny|aria|ava|samantha|victoria|karen|moira|tessa|fiona|serena|hazel|susan|female|woman/i;
-    preferredVoice = voices.find(voice => friendlyNames.test(voice.name) && voice.lang.toLowerCase().startsWith('en')) || voices.find(voice => voice.lang.toLowerCase().startsWith('en')) || voices[0] || null;
-  };
-  const narrate = text => { if (!('speechSynthesis' in window)) return; selectVoice(); window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = preferredVoice?.lang || 'en-US'; utterance.voice = preferredVoice; utterance.rate = 0.98; utterance.pitch = 1.04; window.speechSynthesis.speak(utterance); };
+  const narrate = async step => { narration.pause(); narration.currentTime = 0; narration.src = {{ url_for('demo_audio', step=999)|tojson }}.replace('999', String(step)); try { await narration.play(); } catch (_) { status.textContent = 'The local Kokoro narration audio is unavailable. Run the demo-voice setup on this server, then reload this page.'; } };
   const stopTimer = () => { if (timer) window.clearTimeout(timer); timer = null; running = false; };
-  const finish = () => { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); title.textContent = 'Tour complete'; meta.textContent = `${format(totalSeconds)} / ${format(totalSeconds)}`; status.textContent = recorder && recorder.state === 'recording' ? 'Tour complete. Converting your recording to MP4…' : 'Tour complete. Review it, then record again or export a fresh take.'; if (recorder && recorder.state === 'recording') recorder.stop(); };
-  const run = () => { if (index >= steps.length) return finish(); const step = steps[index]; running = true; frame.src = step.url; update(); status.textContent = `Showing ${step.title}.`; narrate(step.narration); timer = window.setTimeout(() => { elapsed += step.seconds; index += 1; run(); }, step.seconds * 1000); };
+  const finish = () => { stopTimer(); narration.pause(); title.textContent = 'Tour complete'; meta.textContent = `${format(totalSeconds)} / ${format(totalSeconds)}`; status.textContent = recorder && recorder.state === 'recording' ? 'Tour complete. Converting your recording to MP4…' : 'Tour complete. Review it, then record again or export a fresh take.'; if (recorder && recorder.state === 'recording') recorder.stop(); };
+  const run = () => { if (index >= steps.length) return finish(); const step = steps[index]; running = true; frame.src = step.url; update(); status.textContent = `Showing ${step.title}.`; narrate(index); timer = window.setTimeout(() => { elapsed += step.seconds; index += 1; run(); }, step.seconds * 1000); };
   const begin = () => { if (running) return; if (index >= steps.length) { index = 0; elapsed = 0; } run(); };
-  const reset = () => { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.cancel(); index = 0; elapsed = 0; frame.src = steps[0].url; update(); status.textContent = 'Ready to begin.'; };
+  const reset = () => { stopTimer(); narration.pause(); narration.currentTime = 0; index = 0; elapsed = 0; frame.src = steps[0].url; update(); status.textContent = 'Ready to begin.'; };
   const downloadMp4 = async () => {
     status.textContent = 'Uploading the screen recording and converting it to MP4…';
     const form = new FormData(); form.append('video', new Blob(chunks, {type: 'video/webm'}), 'elefthero-demo.webm');
@@ -86,7 +82,7 @@
     finally { stream?.getTracks().forEach(track => track.stop()); stream = null; recorder = null; chunks = []; record.disabled = false; if (document.fullscreenElement === player) document.exitFullscreen?.(); }
   };
   start.addEventListener('click', begin);
-  pause.addEventListener('click', () => { if (running) { stopTimer(); if ('speechSynthesis' in window) window.speechSynthesis.pause(); pause.textContent = 'Resume'; status.textContent = 'Tour paused.'; } else { if ('speechSynthesis' in window) window.speechSynthesis.resume(); pause.textContent = 'Pause'; begin(); } });
+  pause.addEventListener('click', () => { if (running) { stopTimer(); narration.pause(); pause.textContent = 'Resume'; status.textContent = 'Tour paused.'; } else { pause.textContent = 'Pause'; begin(); } });
   restart.addEventListener('click', reset);
   record.addEventListener('click', async () => {
     if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) { status.textContent = 'This browser cannot record a screen share. Use a current Chrome or Edge browser.'; return; }
@@ -98,7 +94,6 @@
       stream.getVideoTracks()[0].addEventListener('ended', () => { if (recorder?.state === 'recording') recorder.stop(); }); recorder.start(1000); record.disabled = true; status.textContent = 'Recording. Keep this tab selected and let the guided tour complete.'; reset(); begin();
     } catch (_) { status.textContent = 'Screen-recording permission was not granted.'; }
   });
-  if ('speechSynthesis' in window) { selectVoice(); window.speechSynthesis.addEventListener?.('voiceschanged', selectVoice); }
   update();
 })();
 </script>

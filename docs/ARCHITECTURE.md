@@ -75,7 +75,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  Guide[Admin guided tour] --> TTS[Browser text-to-speech]
+  Guide[Admin guided tour] --> TTS[Local Kokoro MP3 narration]
   Guide --> Capture[Browser tab capture with user consent]
   Capture --> Upload[CSRF-protected MP4 export endpoint]
   Upload --> FFmpeg[FFmpeg H.264/AAC conversion]

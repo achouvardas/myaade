@@ -4,7 +4,8 @@
 
 - Python 3.11+ and `venv`
 - Git
-- FFmpeg for the optional in-app Devpost MP4 export (`ffmpeg` package)
+- FFmpeg for the optional in-app Devpost MP4 export and demo audio (`ffmpeg` package)
+- For the optional local narrated demo: the offline Kokoro ONNX model files (kept in `instance/`, not Git)
 - For production: systemd and a non-root deployment user (recommended)
 - Optional public access: `cloudflared`, a Cloudflare account, and a hostname routed to a named tunnel
 
@@ -119,6 +120,12 @@ git diff --check
 
 ## Recording the Devpost demonstration
 
-Sign in as an administrator and open **Demo** from the navigation. The timed run combines the landing-page presentation with a guided tour of the application and uses the browser’s most natural available English voice, preferring familiar female system voices where available. Choose **Record full-screen and export MP4**; Elefthero enters full-screen presentation mode, then select **This tab** in Chrome or Edge and enable **Share tab audio**. At the end, Elefthero uploads the WebM recording to the server and uses FFmpeg to download an MP4.
+Elefthero uses a local, open-source Kokoro voice (`af_bella`) for its fixed English demo narration, instead of the browser's variable system voice. Install `sherpa-onnx` and `numpy` from `requirements.txt`, download the [official sherpa-onnx Kokoro English release](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2) into `instance/models/kokoro-en-v0_19/`, then generate the audio once:
+
+```bash
+.venv/bin/python scripts/generate_demo_audio.py
+```
+
+Sign in as an administrator and open **Demo** from the navigation. The timed run combines the landing-page presentation with a guided tour of the application. Choose **Record full-screen and export MP4**; Elefthero enters full-screen presentation mode, then select **This tab** in Chrome or Edge and enable **Share tab audio**. At the end, Elefthero uploads the WebM recording to the server and uses FFmpeg to download an MP4.
 
 Review the recording before publishing it. Uploading it to YouTube is intentionally manual: it requires the project owner to authorize their own account and select public visibility.
