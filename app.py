@@ -1,6 +1,6 @@
 import os
 import base64
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree.ElementTree import Element, SubElement, fromstring, register_namespace, tostring
 
@@ -116,6 +116,8 @@ class Client(db.Model):
     address = db.Column(db.String(300))
     profession = db.Column(db.String(300))
     gemi_number = db.Column(db.String(30))
+    gemi_checked_at = db.Column(db.DateTime)
+    gemi_retry_after = db.Column(db.DateTime)
     vies_checked_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class User(db.Model):
@@ -396,25 +398,31 @@ def check_vies(raw_vat):
     if fields.get("valid", "false").lower() != "true": raise ValueError("VIES returned no valid registration. The VAT format may be valid; check VIES/AADE status and retry later.")
     return vat, fields.get("name", "Verified Greek business").split("||", 1)[0].strip(), fields.get("address", "")
 def lookup_gemi(vat):
+    headers = {"User-Agent": "Elefthero/1.0 (+https://github.com/achouvardas/Elefthero)", "Accept": "application/json, text/plain, */*", "Accept-Language": "el-GR,el;q=0.9,en;q=0.8"}
     try:
-        autocomplete_response = requests.get(f"https://publicity.businessportal.gr/api/autocomplete/{vat}", timeout=10); autocomplete_response.raise_for_status(); autocomplete = autocomplete_response.json()
+        autocomplete_response = requests.get(f"https://publicity.businessportal.gr/api/autocomplete/{vat}", headers=headers, timeout=10); autocomplete_response.raise_for_status(); autocomplete = autocomplete_response.json()
         matches = autocomplete.get("payload", {}).get("autocomplete", [])
-        if not matches or not matches[0].get("arGemi"): audit("gemi_lookup", f"No ΓΕΜΗ record for VAT {vat}", "{}"); return "", "", ""
+        if not matches or not matches[0].get("arGemi"): audit("gemi_lookup", f"No ΓΕΜΗ record for VAT {vat}", "{}"); return "", "", "", False
         gemi = str(matches[0]["arGemi"])
-        details_response = requests.post("https://publicity.businessportal.gr/api/company/details", json={"query": {"arGEMI": gemi}, "token": None, "language": "el"}, timeout=12); details_response.raise_for_status(); details = details_response.json()
+        details_response = requests.post("https://publicity.businessportal.gr/api/company/details", json={"query": {"arGEMI": gemi}, "token": None, "language": "el"}, headers=headers, timeout=12); details_response.raise_for_status(); details = details_response.json()
         payload = details.get("companyInfo", {}).get("payload", {})
         profession = next((item.get("descr", "").strip() for item in payload.get("kadData", []) if item.get("activities", "").strip().lower() == "κύρια".lower() and item.get("descr")), "")
         address = payload.get("company", {}).get("company_address", "").strip()
         audit("gemi_lookup", f"ΓΕΜΗ {gemi} for VAT {vat}; primary activity: {profession or 'not provided'}", str({"gemi": gemi, "profession": profession, "address": address}))
-        return gemi, profession, address
-    except (requests.RequestException, ValueError, TypeError, KeyError) as error: audit("gemi_lookup_failed", f"ΓΕΜΗ lookup for VAT {vat}: {error}"); return "", "", ""
+        return gemi, profession, address, False
+    except requests.HTTPError as error:
+        response = error.response; status = response.status_code if response is not None else "unknown"; excerpt = response.text[:300] if response is not None else ""; audit("gemi_lookup_failed", f"ΓΕΜΗ lookup for VAT {vat}: HTTP {status}", excerpt); return "", "", "", status == 429
+    except (requests.RequestException, ValueError, TypeError, KeyError) as error: audit("gemi_lookup_failed", f"ΓΕΜΗ lookup for VAT {vat}: {error}"); return "", "", "", False
 @app.route("/clients", methods=["GET", "POST"])
 def clients():
     if request.method == "POST":
         try:
-            vat, name, address = check_vies(request.form["vat_number"]); gemi, profession, gemi_address = lookup_gemi(vat); client = Client.query.filter_by(vat_number=vat).first(); address = address or gemi_address
-            if client: client.name, client.address, client.gemi_number, client.profession, client.vies_checked_at = name, address, gemi or client.gemi_number, profession or client.profession, datetime.utcnow()
-            else: db.session.add(Client(name=name, vat_number=vat, address=address, gemi_number=gemi, profession=profession))
+            vat, name, address = check_vies(request.form["vat_number"]); client = Client.query.filter_by(vat_number=vat).first(); now = datetime.utcnow(); lookup_due = not client or ((client.gemi_retry_after and now >= client.gemi_retry_after) or (not client.gemi_retry_after and (not client.gemi_checked_at or now - client.gemi_checked_at >= timedelta(days=30))))
+            gemi, profession, gemi_address, rate_limited = lookup_gemi(vat) if lookup_due else ("", "", "", False); address = address or gemi_address
+            if client:
+                client.name, client.address, client.gemi_number, client.profession, client.vies_checked_at = name, address, gemi or client.gemi_number, profession or client.profession, now
+                if lookup_due: client.gemi_checked_at, client.gemi_retry_after = now, (now + timedelta(minutes=5) if rate_limited else None)
+            else: db.session.add(Client(name=name, vat_number=vat, address=address, gemi_number=gemi, profession=profession, gemi_checked_at=now, gemi_retry_after=(now + timedelta(minutes=5) if rate_limited else None)))
             db.session.commit(); flash(f"{name} verified with VIES and saved.", "success")
         except (ValueError, requests.RequestException) as error: audit("vies_failed", str(error)); flash(f"VIES validation unavailable: {error}", "error")
         return redirect(url_for("clients"))
@@ -436,7 +444,7 @@ with app.app_context():
     for name, definition in {"payment_method": "VARCHAR(2) DEFAULT '3'", "invoice_uid": "VARCHAR(80)", "qr_url": "TEXT", "customer_address": "VARCHAR(300)", "customer_profession": "VARCHAR(300)"}.items():
         if name not in invoice_columns: db.session.execute(text(f"ALTER TABLE invoice ADD COLUMN {name} {definition}"))
     client_columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
-    for name, definition in {"profession": "VARCHAR(300)", "gemi_number": "VARCHAR(30)"}.items():
+    for name, definition in {"profession": "VARCHAR(300)", "gemi_number": "VARCHAR(30)", "gemi_checked_at": "DATETIME", "gemi_retry_after": "DATETIME"}.items():
         if name not in client_columns: db.session.execute(text(f"ALTER TABLE client ADD COLUMN {name} {definition}"))
     configured_mode = setting("mydata_mode", "")
     if configured_mode and configured_mode not in ENVIRONMENTS: set_setting("mydata_mode", "test")
