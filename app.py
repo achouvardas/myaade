@@ -91,6 +91,7 @@ class Invoice(db.Model):
     qr_url = db.Column(db.Text)
     payment_method = db.Column(db.String(2), nullable=False, default="3")
     customer_address = db.Column(db.String(300))
+    customer_profession = db.Column(db.String(300))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     @property
@@ -113,6 +114,8 @@ class Client(db.Model):
     name = db.Column(db.String(160), nullable=False)
     vat_number = db.Column(db.String(20), unique=True, nullable=False)
     address = db.Column(db.String(300))
+    profession = db.Column(db.String(300))
+    gemi_number = db.Column(db.String(30))
     vies_checked_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class User(db.Model):
@@ -324,10 +327,11 @@ def invoice_pdf(invoice_id):
         if line: canvas.drawString(text_x, 775 - position * 13, line)
     canvas.setFillColor(pale); canvas.rect(42, 665, 510, 48, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 9); canvas.drawString(54, 695, "Είδος Παραστατικού"); canvas.drawString(54, 678, INVOICE_TYPES.get(invoice.invoice_type, invoice.invoice_type)); canvas.drawString(320, 695, f"Σειρά: {setting('invoice_series', 'A')}"); canvas.drawString(320, 678, f"Αριθμός Παραστατικού: {invoice.number} · Ημερομηνία: {invoice.issue_date.strftime('%d/%m/%Y')}")
     canvas.setFillColor(navy); canvas.rect(42, 630, 510, 22, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.setFont("SiraSans", 10); canvas.drawString(54, 638, "Στοιχεία Πελάτη")
-    canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 560, 510, 70, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
+    canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 545, 510, 85, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
     if invoice.customer_address: canvas.drawString(54, 570, invoice.customer_address.replace("\n", ", ")[:90])
+    if invoice.customer_profession: canvas.drawString(54, 557, f"ΕΠΑΓΓΕΛΜΑ: {invoice.customer_profession}"[:90])
     canvas.setFillColor(cyan); canvas.drawRightString(540, 606, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
-    y = 525; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
+    y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
     for index, line in enumerate(lines or [type("L", (), {"description":invoice.description,"net":invoice.net})()], 1):
         y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(92, y+10, str(line.description)[:65]); canvas.drawRightString(535, y+10, f"{line.net:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{invoice.net:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{invoice.vat_amount:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{invoice.total:.2f} €")
@@ -353,8 +357,8 @@ def new_invoice():
             if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason, _, _ in parsed) or any(category not in INCOME_CATEGORIES or income_type not in INCOME_TYPES for _, _, _, _, category, income_type in parsed): raise ValueError
         except (ValueError, ArithmeticError): flash("Add at least one valid line and an AADE VAT exemption reason for every 0% VAT line.", "error"); return redirect(url_for("new_invoice"))
         total_net, total_vat = sum((net for _, net, _, _, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _, _, _ in parsed), Decimal("0"))
-        customer_address = "" if retail else request.form.get("customer_address", "").strip()
-        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
+        customer_address = "" if retail else request.form.get("customer_address", "").strip(); customer_profession = "" if retail else request.form.get("customer_profession", "").strip()
+        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, customer_profession=customer_profession, description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
         db.session.add(invoice)
         db.session.flush()
         for description, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
@@ -389,13 +393,25 @@ def check_vies(raw_vat):
     fields = {node.tag.rsplit("}", 1)[-1]: (node.text or "").strip() for node in fromstring(response.content).iter()}
     if fields.get("valid", "false").lower() != "true": raise ValueError("VIES returned no valid registration. The VAT format may be valid; check VIES/AADE status and retry later.")
     return vat, fields.get("name", "Verified Greek business").split("||", 1)[0].strip(), fields.get("address", "")
+def lookup_gemi(vat):
+    try:
+        autocomplete = requests.get(f"https://publicity.businessportal.gr/api/autocomplete/{vat}", timeout=10).json()
+        matches = autocomplete.get("payload", {}).get("autocomplete", [])
+        if not matches or not matches[0].get("arGemi"): return "", "", ""
+        gemi = str(matches[0]["arGemi"])
+        details = requests.post("https://publicity.businessportal.gr/api/company/details", json={"query": {"arGEMI": gemi}, "token": None, "language": "el"}, timeout=12).json()
+        payload = details.get("companyInfo", {}).get("payload", {})
+        profession = next((item.get("descr", "").strip() for item in payload.get("kadData", []) if item.get("activities", "").strip().lower() == "κύρια".lower() and item.get("descr")), "")
+        address = payload.get("company", {}).get("company_address", "").strip()
+        return gemi, profession, address
+    except (requests.RequestException, ValueError, TypeError, KeyError): return "", "", ""
 @app.route("/clients", methods=["GET", "POST"])
 def clients():
     if request.method == "POST":
         try:
-            vat, name, address = check_vies(request.form["vat_number"]); client = Client.query.filter_by(vat_number=vat).first()
-            if client: client.name, client.address, client.vies_checked_at = name, address, datetime.utcnow()
-            else: db.session.add(Client(name=name, vat_number=vat, address=address))
+            vat, name, address = check_vies(request.form["vat_number"]); gemi, profession, gemi_address = lookup_gemi(vat); client = Client.query.filter_by(vat_number=vat).first(); address = address or gemi_address
+            if client: client.name, client.address, client.gemi_number, client.profession, client.vies_checked_at = name, address, gemi or client.gemi_number, profession or client.profession, datetime.utcnow()
+            else: db.session.add(Client(name=name, vat_number=vat, address=address, gemi_number=gemi, profession=profession))
             db.session.commit(); flash(f"{name} verified with VIES and saved.", "success")
         except (ValueError, requests.RequestException) as error: audit("vies_failed", str(error)); flash(f"VIES validation unavailable: {error}", "error")
         return redirect(url_for("clients"))
@@ -414,8 +430,11 @@ with app.app_context():
     for name, definition in {"income_category": "VARCHAR(30)", "income_type": "VARCHAR(30)"}.items():
         if name not in existing_columns: db.session.execute(text(f"ALTER TABLE invoice_line ADD COLUMN {name} {definition}"))
     invoice_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice")}
-    for name, definition in {"payment_method": "VARCHAR(2) DEFAULT '3'", "invoice_uid": "VARCHAR(80)", "qr_url": "TEXT", "customer_address": "VARCHAR(300)"}.items():
+    for name, definition in {"payment_method": "VARCHAR(2) DEFAULT '3'", "invoice_uid": "VARCHAR(80)", "qr_url": "TEXT", "customer_address": "VARCHAR(300)", "customer_profession": "VARCHAR(300)"}.items():
         if name not in invoice_columns: db.session.execute(text(f"ALTER TABLE invoice ADD COLUMN {name} {definition}"))
+    client_columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
+    for name, definition in {"profession": "VARCHAR(300)", "gemi_number": "VARCHAR(30)"}.items():
+        if name not in client_columns: db.session.execute(text(f"ALTER TABLE client ADD COLUMN {name} {definition}"))
     configured_mode = setting("mydata_mode", "")
     if configured_mode and configured_mode not in ENVIRONMENTS: set_setting("mydata_mode", "test")
     db.session.commit()
