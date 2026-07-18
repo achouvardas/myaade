@@ -140,7 +140,7 @@ def invoice_xml(invoice):
     inv = SubElement(root, "invoice")
     issuer, counterpart = SubElement(inv, "issuer"), SubElement(inv, "counterpart")
     SubElement(issuer, "vatNumber").text, SubElement(issuer, "country").text, SubElement(issuer, "branch").text = setting("business_vat", os.getenv("MYDATA_VAT_NUMBER", "")), "GR", "0"
-    SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text = invoice.vat_number, "GR"
+    SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text, SubElement(counterpart, "branch").text = invoice.vat_number, "GR", "0"
     header = SubElement(inv, "invoiceHeader")
     SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
     SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
@@ -220,8 +220,7 @@ def business_settings():
     if request.method == "POST":
         for field in fields: set_setting(field, request.form.get(field, ""))
         db.session.commit(); audit("business_profile_updated"); flash("Business profile saved.", "success"); return redirect(url_for("business_settings"))
-    defaults = {"business_legal_name":"ΚΙΝΕΖΟΥ ΜΑΡΙΝΑ ΤΟΥ ΑΘΑΝΑΣΙΟΥ", "business_activity":"ΕΚΔΟΣΗ ΕΝΤΥΠΩΝ ΕΦΗΜΕΡΙΔΩΝ", "business_vat":"113959169", "business_doy":"ΚΟΜΟΤΗΝΗΣ", "business_address":"ΚΑΣΤΕΛΟΡΙΖΟΥ 2, ΚΟΜΟΤΗΝΗ, Ν. ΡΟΔΟΠΗΣ ΤΚ. 69100", "business_email":"marinakinneathrakis@gmail.com", "business_phone":"6982970176", "business_gemi":"053724811000", "business_website":"www.thrakionline.gr"}
-    return render_template("business_settings.html", values={field: setting(field, defaults[field]) for field in fields})
+    return render_template("business_settings.html", values={field: setting(field, "") for field in fields})
 @app.route("/users", methods=["GET", "POST"])
 def users():
     require_admin()
@@ -233,6 +232,11 @@ def users():
     return render_template("users.html", users=User.query.order_by(User.created_at).all())
 @app.get("/logs")
 def logs(): require_admin(); return render_template("logs.html", logs=ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all())
+@app.get("/logs/<int:log_id>/xml")
+def view_xml_log(log_id):
+    require_admin(); log = db.get_or_404(ActivityLog, log_id)
+    if log.action not in {"xml_sent", "xml_received"}: abort(404)
+    return app.response_class(log.payload or "", mimetype="application/xml")
 @app.get("/invoices/<int:invoice_id>/pdf")
 def invoice_pdf(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
