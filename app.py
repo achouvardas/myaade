@@ -138,12 +138,12 @@ def protect_app():
 def invoice_xml(invoice):
     root = Element("InvoicesDoc", {"xmlns": "http://www.aade.gr/myDATA/invoice/v1.0"})
     inv = SubElement(root, "invoice")
-    header = SubElement(inv, "invoiceHeader")
-    SubElement(header, "series").text, SubElement(header, "aa").text = "A", invoice.number
-    SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
     issuer, counterpart = SubElement(inv, "issuer"), SubElement(inv, "counterpart")
-    SubElement(issuer, "vatNumber").text = os.getenv("MYDATA_VAT_NUMBER", "")
-    SubElement(counterpart, "vatNumber").text = invoice.vat_number
+    SubElement(issuer, "vatNumber").text, SubElement(issuer, "country").text, SubElement(issuer, "branch").text = setting("business_vat", os.getenv("MYDATA_VAT_NUMBER", "")), "GR", "0"
+    SubElement(counterpart, "vatNumber").text, SubElement(counterpart, "country").text = invoice.vat_number, "GR"
+    header = SubElement(inv, "invoiceHeader")
+    SubElement(header, "series").text, SubElement(header, "aa").text = setting("invoice_series", "A"), invoice.number
+    SubElement(header, "issueDate").text, SubElement(header, "invoiceType").text = invoice.issue_date.isoformat(), invoice.invoice_type
     lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).order_by(InvoiceLine.id).all()
     if not lines: lines = [type("LegacyLine", (), {"net": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None})()]
     total_net, total_vat = Decimal("0"), Decimal("0")
@@ -214,6 +214,14 @@ def settings():
         db.session.commit(); audit("settings_updated", "Administrator updated integration and numbering settings"); flash("Settings saved. Secrets are encrypted at rest.", "success"); return redirect(url_for("settings"))
     values = {key: setting(key) for key in ["mydata_mode", "turnstile_sitekey", "invoice_series", "invoice_next_number"]}
     return render_template("settings.html", values=values, configured={"mydata_user_id": bool(setting("mydata_user_id")), "mydata_subscription_key": bool(setting("mydata_subscription_key")), "turnstile_secret": bool(setting("turnstile_secret"))})
+@app.route("/business-settings", methods=["GET", "POST"])
+def business_settings():
+    require_admin(); fields = ("business_legal_name", "business_activity", "business_vat", "business_doy", "business_address", "business_email", "business_phone", "business_gemi", "business_website")
+    if request.method == "POST":
+        for field in fields: set_setting(field, request.form.get(field, ""))
+        db.session.commit(); audit("business_profile_updated"); flash("Business profile saved.", "success"); return redirect(url_for("business_settings"))
+    defaults = {"business_legal_name":"ΚΙΝΕΖΟΥ ΜΑΡΙΝΑ ΤΟΥ ΑΘΑΝΑΣΙΟΥ", "business_activity":"ΕΚΔΟΣΗ ΕΝΤΥΠΩΝ ΕΦΗΜΕΡΙΔΩΝ", "business_vat":"113959169", "business_doy":"ΚΟΜΟΤΗΝΗΣ", "business_address":"ΚΑΣΤΕΛΟΡΙΖΟΥ 2, ΚΟΜΟΤΗΝΗ, Ν. ΡΟΔΟΠΗΣ ΤΚ. 69100", "business_email":"marinakinneathrakis@gmail.com", "business_phone":"6982970176", "business_gemi":"053724811000", "business_website":"www.thrakionline.gr"}
+    return render_template("business_settings.html", values={field: setting(field, defaults[field]) for field in fields})
 @app.route("/users", methods=["GET", "POST"])
 def users():
     require_admin()
@@ -269,7 +277,8 @@ def invoices(): return render_template("invoices.html", invoices=Invoice.query.o
 @app.post("/invoices/<int:invoice_id>/delete")
 def delete_invoice(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
-    if invoice.status == "transmitted": flash("A transmitted invoice cannot be deleted; cancel it through AADE.", "error")
+    if setting("mydata_mode", "demo") not in {"demo", "local"}: flash("Deletion is disabled outside Demo mode.", "error")
+    elif invoice.status == "transmitted": flash("A transmitted invoice cannot be deleted; cancel it through AADE.", "error")
     else: InvoiceLine.query.filter_by(invoice_id=invoice.id).delete(); db.session.delete(invoice); db.session.commit(); audit("invoice_deleted", invoice.number); flash("Draft invoice deleted.", "success")
     return redirect(url_for("invoices"))
 def check_vies(raw_vat):
@@ -293,6 +302,7 @@ def clients():
     return render_template("clients.html", clients=Client.query.order_by(Client.name).all())
 @app.post("/clients/<int:client_id>/delete")
 def delete_client(client_id):
+    if setting("mydata_mode", "demo") not in {"demo", "local"}: flash("Deletion is disabled outside Demo mode.", "error"); return redirect(url_for("clients"))
     client = db.get_or_404(Client, client_id); db.session.delete(client); db.session.commit(); audit("client_deleted", client.vat_number); flash("Client deleted.", "success"); return redirect(url_for("clients"))
 @app.post("/locale/<code>")
 def set_locale(code): session["locale"] = code if code in COPY else "en"; return redirect(request.referrer or url_for("dashboard"))
