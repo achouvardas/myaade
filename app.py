@@ -1,11 +1,14 @@
 import os
 import base64
+import io
 from html import escape
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from xml.etree.ElementTree import Element, SubElement, fromstring, register_namespace, tostring
 
 import requests
+import pyotp
+import qrcode
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for, send_file
@@ -152,6 +155,9 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="user")
+    totp_secret = db.Column(db.Text)
+    totp_pending_secret = db.Column(db.Text)
+    totp_enabled = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 class AppSetting(db.Model):
@@ -186,6 +192,8 @@ def set_setting(key, value, encrypted=False):
     item = db.session.get(AppSetting, key) or AppSetting(key=key, value="")
     item.encrypted, item.value = encrypted, (cipher().encrypt(value.encode()).decode() if encrypted and value else value)
     db.session.add(item)
+def encrypt_secret(value): return cipher().encrypt(value.encode()).decode()
+def decrypt_secret(value): return cipher().decrypt(value.encode()).decode() if value else ""
 def audit(action, detail="", payload=None):
     db.session.add(ActivityLog(action=action, detail=detail, payload=payload, actor=session.get("user_email"))); db.session.commit()
 def current_user(): return db.session.get(User, session.get("user_id")) if session.get("user_id") else None
@@ -202,7 +210,7 @@ def turnstile_ok(token):
 
 @app.before_request
 def protect_app():
-    public = {"setup", "login", "health", "static"}
+    public = {"setup", "login", "two_factor_challenge", "health", "static"}
     if not User.query.first() and request.endpoint not in public: return redirect(url_for("setup"))
     if User.query.first() and not current_user() and request.endpoint not in public: return redirect(url_for("login"))
 
@@ -301,10 +309,57 @@ def login():
     if request.method == "POST":
         user = User.query.filter_by(email=request.form["email"].strip().lower()).first()
         if not turnstile_ok(request.form.get("cf-turnstile-response")) or not user or not check_password_hash(user.password_hash, request.form["password"]): flash("Invalid credentials or Turnstile verification.", "error"); audit("login_failed", request.form["email"]); return redirect(url_for("login"))
-        session.clear(); session["user_id"], session["user_email"] = user.id, user.email; audit("login", "Successful login"); return redirect(url_for("dashboard"))
+        session.clear()
+        if user.totp_enabled and user.totp_secret:
+            session["pending_2fa_user_id"] = user.id; session["pending_2fa_email"] = user.email; audit("login_2fa_challenge", "Password accepted; TOTP required"); return redirect(url_for("two_factor_challenge"))
+        session["user_id"], session["user_email"] = user.id, user.email; audit("login", "Successful login"); return redirect(url_for("dashboard"))
     return render_template("login.html", turnstile_sitekey=setting("turnstile_sitekey"))
 @app.post("/logout")
 def logout(): audit("logout"); session.clear(); return redirect(url_for("login"))
+
+@app.route("/two-factor", methods=["GET", "POST"])
+def two_factor_challenge():
+    user = db.session.get(User, session.get("pending_2fa_user_id"))
+    if not user or not user.totp_enabled or not user.totp_secret: return redirect(url_for("login"))
+    if request.method == "POST":
+        code = request.form.get("code", "").replace(" ", "")
+        if not pyotp.TOTP(decrypt_secret(user.totp_secret)).verify(code, valid_window=1):
+            audit("login_2fa_failed", user.email); flash("Invalid authenticator code.", "error"); return redirect(url_for("two_factor_challenge"))
+        session.clear(); session["user_id"], session["user_email"] = user.id, user.email; audit("login_2fa", "Successful two-factor login"); return redirect(url_for("dashboard"))
+    return render_template("two_factor_challenge.html", email=user.email)
+
+@app.route("/two-factor/setup", methods=["GET", "POST"])
+def two_factor_setup():
+    user = current_user()
+    if not user: return redirect(url_for("login"))
+    if request.method == "POST":
+        pending = decrypt_secret(user.totp_pending_secret)
+        code = request.form.get("code", "").replace(" ", "")
+        if not pending or not pyotp.TOTP(pending).verify(code, valid_window=1):
+            flash("Invalid authenticator code. Scan the QR code and try again.", "error"); return redirect(url_for("two_factor_setup"))
+        user.totp_secret, user.totp_pending_secret, user.totp_enabled = user.totp_pending_secret, None, True
+        db.session.commit(); audit("two_factor_enabled", user.email); flash("Two-factor authentication is enabled.", "success"); return redirect(url_for("two_factor_setup"))
+    if not user.totp_enabled and not user.totp_pending_secret:
+        user.totp_pending_secret = encrypt_secret(pyotp.random_base32()); db.session.commit(); audit("two_factor_enrollment_started", user.email)
+    return render_template("two_factor_setup.html", enabled=user.totp_enabled)
+
+@app.get("/two-factor/qr")
+def two_factor_qr():
+    user = current_user()
+    if not user or user.totp_enabled or not user.totp_pending_secret: abort(404)
+    uri = pyotp.TOTP(decrypt_secret(user.totp_pending_secret)).provisioning_uri(name=user.email, issuer_name="Elefthero")
+    image = qrcode.make(uri); output = io.BytesIO(); image.save(output, format="PNG"); output.seek(0)
+    return send_file(output, mimetype="image/png", download_name="elefthero-2fa-qr.png", max_age=0)
+
+@app.post("/two-factor/disable")
+def two_factor_disable():
+    user = current_user()
+    if not user or not user.totp_enabled or not user.totp_secret: abort(404)
+    code = request.form.get("code", "").replace(" ", "")
+    if not check_password_hash(user.password_hash, request.form.get("password", "")) or not pyotp.TOTP(decrypt_secret(user.totp_secret)).verify(code, valid_window=1):
+        audit("two_factor_disable_failed", user.email); flash("Enter your current password and a valid authenticator code.", "error"); return redirect(url_for("two_factor_setup"))
+    user.totp_secret, user.totp_pending_secret, user.totp_enabled = None, None, False
+    db.session.commit(); audit("two_factor_disabled", user.email); flash("Two-factor authentication is disabled.", "success"); return redirect(url_for("two_factor_setup"))
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings():
@@ -653,6 +708,9 @@ with app.app_context():
     client_columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
     for name, definition in {"profession": "VARCHAR(300)", "gemi_number": "VARCHAR(30)", "gemi_checked_at": "DATETIME", "gemi_retry_after": "DATETIME"}.items():
         if name not in client_columns: db.session.execute(text(f"ALTER TABLE client ADD COLUMN {name} {definition}"))
+    user_columns = {column["name"] for column in inspect(db.engine).get_columns("user")}
+    for name, definition in {"totp_secret": "TEXT", "totp_pending_secret": "TEXT", "totp_enabled": "BOOLEAN DEFAULT 0"}.items():
+        if name not in user_columns: db.session.execute(text(f"ALTER TABLE user ADD COLUMN {name} {definition}"))
     configured_mode = setting("mydata_mode", "")
     if configured_mode and configured_mode not in ENVIRONMENTS: set_setting("mydata_mode", "test")
     db.session.commit()

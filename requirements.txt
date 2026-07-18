@@ -5,3 +5,5 @@ python-dotenv==1.0.1
 gunicorn==23.0.0
 cryptography==44.0.2
 reportlab==4.3.1
+pyotp==2.10.0
+qrcode[pil]==8.2
