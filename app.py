@@ -92,6 +92,7 @@ class Invoice(db.Model):
     payment_method = db.Column(db.String(2), nullable=False, default="3")
     customer_address = db.Column(db.String(300))
     customer_profession = db.Column(db.String(300))
+    notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     @property
@@ -104,6 +105,8 @@ class InvoiceLine(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=False, index=True)
     description = db.Column(db.String(255), nullable=False)
     net = db.Column(db.Numeric(12, 2), nullable=False)
+    quantity = db.Column(db.Numeric(12, 3), nullable=False, default=1)
+    unit_price = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     vat_rate = db.Column(db.Numeric(5, 2), nullable=False, default=24)
     vat_exemption_reason = db.Column(db.String(3))
     income_category = db.Column(db.String(30))
@@ -320,7 +323,7 @@ def view_xml_log(log_id):
     return app.response_class(log.payload or "", mimetype="application/xml")
 @app.get("/invoices/<int:invoice_id>/pdf")
 def invoice_pdf(invoice_id):
-    invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); pdf_lines = lines or [type("L", (), {"description": invoice.description, "net": invoice.net, "vat_rate": invoice.vat_rate})()]; font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
+    invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); pdf_lines = lines or [type("L", (), {"description": invoice.description, "net": invoice.net, "quantity": Decimal("1"), "unit_price": invoice.net, "vat_rate": invoice.vat_rate})()]; font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
     canvas = Canvas(path, pagesize=A4); navy, slate, pale, cyan = HexColor("#0f172a"), HexColor("#334155"), HexColor("#f1f5f9"), HexColor("#0891b2"); canvas.setFillColor(HexColor("#ffffff")); canvas.rect(0, 0, 595, 842, fill=1, stroke=0); canvas.setStrokeColor(HexColor("#cbd5e1")); canvas.setLineWidth(.8)
     legal = setting("business_legal_name", "") or "ΕΠΩΝΥΜΙΑ ΕΠΙΧΕΙΡΗΣΗΣ"; activity = setting("business_activity", ""); issuer_vat = setting("business_vat", ""); doy = setting("business_doy", ""); address = setting("business_address", ""); contact = " · ".join(item for item in [setting("business_email", ""), setting("business_phone", ""), setting("business_website", "")] if item); gemi = setting("business_gemi", ""); logo_path = setting("business_logo", "")
     if logo_path and os.path.isfile(logo_path): canvas.drawImage(logo_path, 476, 735, width=64, height=64, preserveAspectRatio=True, mask="auto")
@@ -338,12 +341,15 @@ def invoice_pdf(invoice_id):
     canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 545, 510, 85, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, invoice.customer); canvas.setFont("SiraSans", 9); canvas.drawString(54, 587, f"ΑΦΜ: {invoice.vat_number}");
     if customer_address: canvas.drawString(54, 570, f"ΔΙΕΥΘΥΝΣΗ: {customer_address.replace(chr(10), ', ')[:78]}")
     if customer_profession: canvas.drawString(54, 557, customer_profession[:90])
-    y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(92, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(380, y+9, "ΚΑΘ. ΑΞΙΑ"); canvas.drawRightString(430, y+9, "ΦΠΑ %"); canvas.drawRightString(480, y+9, "ΦΠΑ €"); canvas.drawRightString(535, y+9, "ΣΥΝΟΛΟ")
+    y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(82, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(300, y+9, "ΠΟΣ."); canvas.drawRightString(350, y+9, "ΤΙΜΗ"); canvas.drawRightString(405, y+9, "ΚΑΘ."); canvas.drawRightString(445, y+9, "ΦΠΑ%"); canvas.drawRightString(490, y+9, "ΦΠΑ €"); canvas.drawRightString(540, y+9, "ΣΥΝΟΛΟ")
     line_net_total, line_vat_total = Decimal("0"), Decimal("0")
     for index, line in enumerate(pdf_lines, 1):
-        vat_rate = Decimal(getattr(line, "vat_rate", invoice.vat_rate)); vat_amount = Decimal(line.net) * vat_rate / 100; line_net_total += Decimal(line.net); line_vat_total += vat_amount; y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(92, y+10, str(line.description)[:40]); canvas.drawRightString(380, y+10, f"{line.net:.2f}"); canvas.drawRightString(430, y+10, f"{vat_rate:.0f}%"); canvas.drawRightString(480, y+10, f"{vat_amount:.2f}"); canvas.drawRightString(535, y+10, f"{Decimal(line.net)+vat_amount:.2f} €")
+        vat_rate = Decimal(getattr(line, "vat_rate", invoice.vat_rate)); vat_amount = Decimal(line.net) * vat_rate / 100; line_net_total += Decimal(line.net); line_vat_total += vat_amount; y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(82, y+10, str(line.description)[:30]); canvas.drawRightString(300, y+10, f"{Decimal(getattr(line, 'quantity', 1)):g}"); canvas.drawRightString(350, y+10, f"{Decimal(getattr(line, 'unit_price', line.net)):.2f}"); canvas.drawRightString(405, y+10, f"{line.net:.2f}"); canvas.drawRightString(445, y+10, f"{vat_rate:.0f}%"); canvas.drawRightString(490, y+10, f"{vat_amount:.2f}"); canvas.drawRightString(540, y+10, f"{Decimal(line.net)+vat_amount:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{line_net_total:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{line_vat_total:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{line_net_total + line_vat_total:.2f} €")
     canvas.setFont("SiraSans", 9); canvas.setFillColor(slate); canvas.drawString(42, 235, f"Τρόπος πληρωμής: {PAYMENT_METHODS.get(invoice.payment_method, '-')}"); canvas.drawString(42, 216, f"UID: {invoice.invoice_uid or '-'}"); canvas.drawString(42, 197, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
+    if invoice.notes:
+        canvas.setFont("SiraSans", 8); canvas.setFillColor(slate); canvas.drawString(155, 150, "Παρατηρήσεις:")
+        for index, note_line in enumerate([invoice.notes[i:i+65] for i in range(0, len(invoice.notes), 65)][:3]): canvas.drawString(155, 136 - index * 11, note_line)
     if invoice.qr_url:
         widget = qr.QrCodeWidget(invoice.qr_url); left, bottom, right, top = widget.getBounds(); size = 94; drawing = Drawing(size, size); drawing.add(widget); drawing.transform = [size / (right-left), 0, 0, size / (top-bottom), 0, 0]; renderPDF.draw(drawing, canvas, 42, 85); canvas.linkURL(invoice.qr_url, (42, 85, 136, 179), relative=0)
     canvas.setFillColor(slate); canvas.setFont("SiraSans", 8); canvas.drawString(42, 55, "Το παρόν διαβιβάστηκε επιτυχώς στο myDATA της ΑΑΔΕ." if invoice.mydata_mark else "Πρόχειρο — δεν έχει ακόμη διαβιβαστεί στο myDATA."); canvas.save(); audit("pdf_generated", f"Invoice {invoice.number}"); return send_file(path, as_attachment=False, download_name=f"invoice-{invoice.number}.pdf", mimetype="application/pdf")
@@ -358,18 +364,18 @@ def new_invoice():
         retail = invoice_type in {"11.1", "11.2", "11.3", "11.4", "11.5"}
         default_income_category = "category1_3"
         default_income_type = "E3_561_003" if retail else "E3_561_001"
-        descriptions, nets, rates, reasons = request.form.getlist("line_description"), request.form.getlist("line_net"), request.form.getlist("line_vat_rate"), request.form.getlist("line_vat_exemption_reason")
+        descriptions, quantities, unit_prices, rates, reasons = request.form.getlist("line_description"), request.form.getlist("line_quantity"), request.form.getlist("line_unit_price"), request.form.getlist("line_vat_rate"), request.form.getlist("line_vat_exemption_reason")
         income_categories, income_types = request.form.getlist("line_income_category"), request.form.getlist("line_income_type")
         try:
-            parsed = [(description, Decimal(net), Decimal(rate), reason if Decimal(rate) == 0 else None, category or default_income_category, income_type or default_income_type) for description, net, rate, reason, category, income_type in zip(descriptions, nets, rates, reasons, income_categories, income_types)]
-            if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason, _, _ in parsed) or any(category not in INCOME_CATEGORIES or income_type not in INCOME_TYPES for _, _, _, _, category, income_type in parsed): raise ValueError
+            parsed = [(description.strip(), Decimal(quantity), Decimal(unit_price), Decimal(quantity) * Decimal(unit_price), Decimal(rate), reason if Decimal(rate) == 0 else None, category or default_income_category, income_type or default_income_type) for description, quantity, unit_price, rate, reason, category, income_type in zip(descriptions, quantities, unit_prices, rates, reasons, income_categories, income_types)]
+            if not parsed or any(not description or quantity <= 0 or unit_price < 0 or (rate == 0 and reason not in VAT_EXEMPTION_REASONS) for description, quantity, unit_price, _, rate, reason, _, _ in parsed) or any(category not in INCOME_CATEGORIES or income_type not in INCOME_TYPES for _, _, _, _, _, _, category, income_type in parsed): raise ValueError
         except (ValueError, ArithmeticError): flash("Add at least one valid line and an AADE VAT exemption reason for every 0% VAT line.", "error"); return redirect(url_for("new_invoice"))
-        total_net, total_vat = sum((net for _, net, _, _, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _, _, _ in parsed), Decimal("0"))
+        total_net, total_vat = sum((net for _, _, _, net, _, _, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, _, _, net, rate, _, _, _ in parsed), Decimal("0"))
         customer_address = "" if retail else request.form.get("customer_address", "").strip(); customer_profession = "" if retail else request.form.get("customer_profession", "").strip()
-        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, customer_profession=customer_profession, description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
+        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], customer_address=customer_address, customer_profession=customer_profession, notes=request.form.get("notes", "").strip(), description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]), payment_method=payment_method)
         db.session.add(invoice)
         db.session.flush()
-        for description, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
+        for description, quantity, unit_price, net, rate, reason, category, income_type in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, quantity=quantity, unit_price=unit_price, net=net, vat_rate=rate, vat_exemption_reason=reason, income_category=category, income_type=income_type))
         if request.form["number"].isdigit(): set_setting("invoice_next_number", str(int(request.form["number"]) + 1))
         db.session.commit(); audit("invoice_draft", f"Created {invoice.number}"); flash("Invoice saved as draft.", "success"); return redirect(url_for("invoice_detail", invoice_id=invoice.id))
     priority = ["1.1", "2.1", "11.1", "11.2"]
@@ -381,7 +387,7 @@ def invoice_detail(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
     lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).order_by(InvoiceLine.id).all()
     if not lines:
-        lines = [type("LegacyLine", (), {"description": invoice.description, "net": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None, "income_category": None, "income_type": None})()]
+        lines = [type("LegacyLine", (), {"description": invoice.description, "net": invoice.net, "quantity": Decimal("1"), "unit_price": invoice.net, "vat_rate": invoice.vat_rate, "vat_exemption_reason": None, "income_category": None, "income_type": None})()]
     return render_template("invoice_detail.html", invoice=invoice, lines=lines, invoice_type_name=INVOICE_TYPES.get(invoice.invoice_type, "Unknown myDATA type"), payment_method_name=PAYMENT_METHODS.get(invoice.payment_method, "-"), invoice_xml_preview=invoice_xml(invoice).decode("utf-8"))
 @app.post("/invoices/<int:invoice_id>/send")
 def send_invoice(invoice_id):
@@ -473,10 +479,12 @@ def health(): return jsonify(status="ok", mode=current_mode(), database="sqlite"
 with app.app_context():
     db.create_all()
     existing_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice_line")}
-    for name, definition in {"income_category": "VARCHAR(30)", "income_type": "VARCHAR(30)"}.items():
+    for name, definition in {"income_category": "VARCHAR(30)", "income_type": "VARCHAR(30)", "quantity": "NUMERIC(12,3) DEFAULT 1", "unit_price": "NUMERIC(12,2) DEFAULT 0"}.items():
         if name not in existing_columns: db.session.execute(text(f"ALTER TABLE invoice_line ADD COLUMN {name} {definition}"))
+    db.session.execute(text("UPDATE invoice_line SET quantity = 1 WHERE quantity IS NULL OR quantity = 0"))
+    db.session.execute(text("UPDATE invoice_line SET unit_price = net WHERE unit_price IS NULL OR unit_price = 0"))
     invoice_columns = {column["name"] for column in inspect(db.engine).get_columns("invoice")}
-    for name, definition in {"payment_method": "VARCHAR(2) DEFAULT '3'", "invoice_uid": "VARCHAR(80)", "qr_url": "TEXT", "customer_address": "VARCHAR(300)", "customer_profession": "VARCHAR(300)"}.items():
+    for name, definition in {"payment_method": "VARCHAR(2) DEFAULT '3'", "invoice_uid": "VARCHAR(80)", "qr_url": "TEXT", "customer_address": "VARCHAR(300)", "customer_profession": "VARCHAR(300)", "notes": "TEXT"}.items():
         if name not in invoice_columns: db.session.execute(text(f"ALTER TABLE invoice ADD COLUMN {name} {definition}"))
     client_columns = {column["name"] for column in inspect(db.engine).get_columns("client")}
     for name, definition in {"profession": "VARCHAR(300)", "gemi_number": "VARCHAR(30)", "gemi_checked_at": "DATETIME", "gemi_retry_after": "DATETIME"}.items():
