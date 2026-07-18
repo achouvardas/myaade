@@ -13,6 +13,8 @@ from flask_sqlalchemy import SQLAlchemy
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import HexColor
 from reportlab.pdfgen.canvas import Canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
@@ -166,9 +168,11 @@ def transmit(invoice):
     if not config or not user or not key: raise ValueError("AADE credentials are missing. Add them only to your local environment.")
     audit("xml_sent", f"SendInvoices for {invoice.number}", xml.decode())
     response = requests.post(config["url"] + "/SendInvoices", data=xml, headers={"aade-user-id": setting("mydata_user_id"), "ocp-apim-subscription-key": setting("mydata_subscription_key"), "Content-Type": "application/xml"}, timeout=20)
-    response.raise_for_status()
-    audit("xml_received", f"AADE response for {invoice.number}", response.text)
-    return "AADE-" + uuid.uuid4().hex[:10].upper() # Response parsing is deliberately surfaced in Activity until AADE schema validation.
+    response.raise_for_status(); audit("xml_received", f"AADE response for {invoice.number}", response.text)
+    response_fields = {node.tag.rsplit("}", 1)[-1]: (node.text or "").strip() for node in fromstring(response.content).iter()}
+    if response_fields.get("statusCode") != "Success" or not response_fields.get("invoiceMark"):
+        raise ValueError(response_fields.get("message") or response_fields.get("errors") or "AADE did not accept the invoice; inspect received XML in Developer Logs.")
+    return response_fields["invoiceMark"]
 
 @app.get("/")
 def dashboard():
@@ -221,8 +225,11 @@ def users():
 def logs(): require_admin(); return render_template("logs.html", logs=ActivityLog.query.order_by(ActivityLog.created_at.desc()).limit(100).all())
 @app.get("/invoices/<int:invoice_id>/pdf")
 def invoice_pdf(invoice_id):
-    invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf")
-    canvas = Canvas(path, pagesize=A4); canvas.setFillColor(HexColor("#0f172a")); canvas.rect(0, 0, 595, 842, fill=1, stroke=0); canvas.setFillColor(HexColor("#67e8f9")); canvas.setFont("Helvetica-Bold", 26); canvas.drawString(48, 785, "myAade"); canvas.setFillColor(HexColor("#ffffff")); canvas.setFont("Helvetica-Bold", 20); canvas.drawString(48, 730, f"Invoice {invoice.number}"); canvas.setFont("Helvetica", 12); canvas.drawString(48, 695, f"Customer: {invoice.customer}  |  VAT: {invoice.vat_number}"); canvas.drawString(48, 670, f"Date: {invoice.issue_date.isoformat()}  |  AADE type: {invoice.invoice_type}"); canvas.drawString(48, 620, invoice.description); canvas.setFont("Helvetica-Bold", 16); canvas.drawRightString(545, 110, f"TOTAL  EUR {invoice.total:.2f}"); canvas.save(); audit("pdf_generated", f"Invoice {invoice.number}"); return send_file(path, as_attachment=True, download_name=f"invoice-{invoice.number}.pdf")
+    invoice = db.get_or_404(Invoice, invoice_id); path = os.path.join(app.instance_path, f"invoice-{invoice.id}.pdf"); lines = InvoiceLine.query.filter_by(invoice_id=invoice.id).all(); font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"; pdfmetrics.registerFont(TTFont("SiraSans", font_path))
+    canvas = Canvas(path, pagesize=A4); canvas.setFillColor(HexColor("#ffffff")); canvas.rect(0, 0, 595, 842, fill=1, stroke=0); canvas.setFillColor(HexColor("#1e293b")); canvas.setFont("SiraSans", 24); canvas.drawString(42, 795, "myAade"); canvas.setFont("SiraSans", 12); canvas.drawString(42, 765, f"ΠΑΡΑΣΤΑΤΙΚΟ {invoice.number} · {invoice.issue_date.isoformat()}"); canvas.drawString(42, 730, f"ΠΕΛΑΤΗΣ: {invoice.customer}"); canvas.drawString(42, 710, f"ΑΦΜ: {invoice.vat_number} · Τύπος myDATA: {invoice.invoice_type}")
+    y = 660; canvas.setFillColor(HexColor("#e2e8f0")); canvas.rect(42, y, 510, 25, fill=1, stroke=0); canvas.setFillColor(HexColor("#1e293b")); canvas.setFont("SiraSans", 10); canvas.drawString(50, y+8, "Α/Α"); canvas.drawString(95, y+8, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(535, y+8, "ΣΥΝΟΛΟ"); canvas.setFont("SiraSans", 10)
+    for index, line in enumerate(lines or [type("L", (), {"description":invoice.description,"net":invoice.net})()], 1): y -= 30; canvas.setFillColor(HexColor("#1e293b")); canvas.drawString(50, y+8, str(index)); canvas.drawString(95, y+8, str(line.description)[:65]); canvas.drawRightString(535, y+8, f"{line.net:.2f} €")
+    canvas.setFont("SiraSans", 11); canvas.drawRightString(535, 150, f"ΚΑΘΑΡΗ ΑΞΙΑ: {invoice.net:.2f} €"); canvas.drawRightString(535, 125, f"Φ.Π.Α.: {invoice.vat_amount:.2f} €"); canvas.setFont("SiraSans", 15); canvas.drawRightString(535, 90, f"ΣΥΝΟΛΙΚΟ ΠΟΣΟ: {invoice.total:.2f} €"); canvas.setFont("SiraSans", 9); canvas.drawString(42, 150, "Το παρόν διαβιβάστηκε επιτυχώς στο myDATA της ΑΑΔΕ." if invoice.mydata_mark else "Πρόχειρο — δεν έχει ακόμη διαβιβαστεί στο myDATA."); canvas.drawString(42, 130, f"MARK: {invoice.mydata_mark or '-'}"); canvas.save(); audit("pdf_generated", f"Invoice {invoice.number}"); return send_file(path, as_attachment=False, download_name=f"invoice-{invoice.number}.pdf", mimetype="application/pdf")
 
 @app.route("/invoices/new", methods=["GET", "POST"])
 def new_invoice():
@@ -235,7 +242,8 @@ def new_invoice():
             if not parsed or any(rate == 0 and reason not in VAT_EXEMPTION_REASONS for _, _, rate, reason in parsed): raise ValueError
         except (ValueError, ArithmeticError): flash("Add at least one valid line and an AADE VAT exemption reason for every 0% VAT line.", "error"); return redirect(url_for("new_invoice"))
         total_net, total_vat = sum((net for _, net, _, _ in parsed), Decimal("0")), sum((net * rate / 100 for _, net, rate, _ in parsed), Decimal("0"))
-        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer=request.form["customer"], vat_number=request.form["vat_number"], description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]))
+        retail = invoice_type in {"11.1", "11.2"}
+        invoice = Invoice(number=request.form["number"], invoice_type=invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else request.form["customer"], vat_number="000000000" if retail else request.form["vat_number"], description=parsed[0][0], net=total_net, vat_rate=(total_vat / total_net * 100 if total_net else Decimal("0")), issue_date=date.fromisoformat(request.form["issue_date"]))
         db.session.add(invoice)
         db.session.flush()
         for description, net, rate, reason in parsed: db.session.add(InvoiceLine(invoice_id=invoice.id, description=description, net=net, vat_rate=rate, vat_exemption_reason=reason))
@@ -263,7 +271,7 @@ def check_vies(raw_vat):
     response = requests.post("https://ec.europa.eu/taxation_customs/vies/services/checkVatService", data=payload.encode(), headers={"Content-Type": "text/xml; charset=utf-8"}, timeout=12); response.raise_for_status()
     fields = {node.tag.rsplit("}", 1)[-1]: (node.text or "").strip() for node in fromstring(response.content).iter()}
     if fields.get("valid", "false").lower() != "true": raise ValueError("VIES returned no valid registration. The VAT format may be valid; check VIES/AADE status and retry later.")
-    return vat, fields.get("name", "Verified Greek business"), fields.get("address", "")
+    return vat, fields.get("name", "Verified Greek business").split("||", 1)[0].strip(), fields.get("address", "")
 @app.route("/clients", methods=["GET", "POST"])
 def clients():
     if request.method == "POST":
