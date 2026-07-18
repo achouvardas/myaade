@@ -308,7 +308,10 @@ def login():
     if not User.query.first(): return redirect(url_for("setup"))
     if request.method == "POST":
         user = User.query.filter_by(email=request.form["email"].strip().lower()).first()
-        if not turnstile_ok(request.form.get("cf-turnstile-response")) or not user or not check_password_hash(user.password_hash, request.form["password"]): flash("Invalid credentials or Turnstile verification.", "error"); audit("login_failed", request.form["email"]); return redirect(url_for("login"))
+        if not turnstile_ok(request.form.get("cf-turnstile-response")):
+            flash("Turnstile verification failed. Refresh this page, complete the check, and try again.", "error"); audit("login_turnstile_failed", request.form["email"]); return redirect(url_for("login"))
+        if not user or not check_password_hash(user.password_hash, request.form["password"]):
+            flash("Invalid email or password.", "error"); audit("login_failed", request.form["email"]); return redirect(url_for("login"))
         session.clear()
         if user.totp_enabled and user.totp_secret:
             session["pending_2fa_user_id"] = user.id; session["pending_2fa_email"] = user.email; audit("login_2fa_challenge", "Password accepted; TOTP required"); return redirect(url_for("two_factor_challenge"))
