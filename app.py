@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 load_dotenv()
 app = Flask(__name__)
 app.config.update(
-    SECRET_KEY=os.getenv("SECRET_KEY", "unsafe-local-development-key"),
+    SECRET_KEY=os.getenv("SECRET_KEY", "unsafe-local-key"),
     SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", "sqlite:///myaade.sqlite3"),
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
@@ -28,8 +28,7 @@ db = SQLAlchemy(app)
 
 ENVIRONMENTS = {
     "local": {"label": "Local simulation", "url": None, "safe": True},
-    "demo": {"label": "Demo / AADE Test", "url": "https://mydataapidev.aade.gr", "safe": True},
-    "development": {"label": "Demo / AADE Test", "url": "https://mydataapidev.aade.gr", "safe": True},
+    "test": {"label": "AADE Test", "url": "https://mydataapidev.aade.gr", "safe": False},
     "production": {"label": "AADE Production", "url": "https://mydatapi.aade.gr/myDATA", "safe": False},
 }
 VAT_CATEGORIES = {"24": "1", "13": "2", "6": "3", "17": "4", "9": "5", "4": "6", "0": "7", "3": "9"}
@@ -99,7 +98,7 @@ class ActivityLog(db.Model):
 def locale(): return session.get("locale", "en")
 @app.context_processor
 def inject_ui(): return {"t": COPY[locale()], "locale": locale(), "mode": setting("mydata_mode", current_mode()) if User.query.first() else current_mode(), "current_user": current_user()}
-def current_mode(): return os.getenv("MYDATA_MODE", "demo").lower()
+def current_mode(): return os.getenv("MYDATA_MODE", "local").lower()
 def cipher():
     key_path = os.path.join(app.instance_path, "myaade-master.key")
     os.makedirs(app.instance_path, exist_ok=True)
@@ -164,7 +163,7 @@ def transmit(invoice):
     mode = setting("mydata_mode", current_mode())
     xml = invoice_xml(invoice)
     if mode == "local":
-        mark = "DEMO-" + uuid.uuid4().hex[:10].upper(); audit("xml_sent", f"Demo SendInvoices for {invoice.number}", xml.decode()); audit("xml_received", f"Demo response for {invoice.number}", f"<response><mark>{mark}</mark></response>"); return mark
+        mark = "LOCAL-" + uuid.uuid4().hex[:10].upper(); audit("xml_sent", f"Local SendInvoices for {invoice.number}", xml.decode()); audit("xml_received", f"Local response for {invoice.number}", f"<response><mark>{mark}</mark></response>"); return mark
     config = ENVIRONMENTS.get(mode)
     user, key = setting("mydata_user_id"), setting("mydata_subscription_key")
     if not config or not user or not key: raise ValueError("AADE credentials are missing. Add them only to your local environment.")
@@ -189,7 +188,7 @@ def setup():
         email, password = request.form["email"].strip().lower(), request.form["password"]
         if len(password) < 12: flash("Use an administrator password of at least 12 characters.", "error"); return redirect(url_for("setup"))
         db.session.add(User(email=email, password_hash=generate_password_hash(password), role="admin"))
-        for key, secret in [("mydata_mode", False), ("mydata_user_id", True), ("mydata_subscription_key", True), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False)]: set_setting(key, request.form.get(key, "demo" if key == "mydata_mode" else ""), secret)
+        for key, secret in [("mydata_mode", False), ("mydata_user_id", True), ("mydata_subscription_key", True), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False)]: set_setting(key, request.form.get(key, "local" if key == "mydata_mode" else ""), secret)
         db.session.commit(); session["user_id"], session["user_email"] = User.query.filter_by(email=email).one().id, email; audit("setup_complete", "First administrator and encrypted settings created"); return redirect(url_for("dashboard"))
     return render_template("setup.html")
 
@@ -281,7 +280,7 @@ def invoices(): return render_template("invoices.html", invoices=Invoice.query.o
 @app.post("/invoices/<int:invoice_id>/delete")
 def delete_invoice(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
-    if setting("mydata_mode", "demo") not in {"demo", "local"}: flash("Deletion is disabled outside Demo mode.", "error")
+    if setting("mydata_mode", "local") != "local": flash("Deletion is disabled outside Local simulation mode.", "error")
     elif invoice.status == "transmitted": flash("A transmitted invoice cannot be deleted; cancel it through AADE.", "error")
     else: InvoiceLine.query.filter_by(invoice_id=invoice.id).delete(); db.session.delete(invoice); db.session.commit(); audit("invoice_deleted", invoice.number); flash("Draft invoice deleted.", "success")
     return redirect(url_for("invoices"))
@@ -306,7 +305,7 @@ def clients():
     return render_template("clients.html", clients=Client.query.order_by(Client.name).all())
 @app.post("/clients/<int:client_id>/delete")
 def delete_client(client_id):
-    if setting("mydata_mode", "demo") not in {"demo", "local"}: flash("Deletion is disabled outside Demo mode.", "error"); return redirect(url_for("clients"))
+    if setting("mydata_mode", "local") != "local": flash("Deletion is disabled outside Local simulation mode.", "error"); return redirect(url_for("clients"))
     client = db.get_or_404(Client, client_id); db.session.delete(client); db.session.commit(); audit("client_deleted", client.vat_number); flash("Client deleted.", "success"); return redirect(url_for("clients"))
 @app.post("/locale/<code>")
 def set_locale(code): session["locale"] = code if code in COPY else "en"; return redirect(request.referrer or url_for("dashboard"))

@@ -1,92 +1,72 @@
-# myAade — calm personal invoicing for Greece
+# myAade
 
-> A bilingual, local-first invoice workspace that makes myDATA submission feel understandable rather than intimidating.
+Local-first, bilingual Greek invoicing with AADE myDATA submission, VIES client validation, PDF invoices, and Cloudflare-protected administration.
 
-myAade is an **Apps for Your Life** entry for OpenAI Build Week. It helps Greek freelancers and small business owners draft an invoice, see VAT clearly, and submit it to AADE myDATA from one calm, accessible flow. It runs with SQLite by default and starts in a completely safe Demo mode.
+## Environments
 
-## Why this matters
+| Mode | Purpose | AADE submission |
+|---|---|---|
+| `local` | Safe local simulation and draft work | Never calls AADE |
+| `test` | AADE Test environment | Real submission to `mydataapidev.aade.gr` |
+| `production` | Live business use | Real submission to `mydatapi.aade.gr` |
 
-For a sole proprietor, invoicing is personal admin with real consequences: fragmented tools, opaque tax terminology, and the anxiety of submitting the wrong thing. myAade converts the core journey into one deliberate loop: create → review totals → transmit → retain a local record. Greek and English switching supports accountants, founders, and international collaborators.
+Deletion is allowed only in `local`. In Test and Production, submitted records must be cancelled through AADE rather than removed.
+
+## How it works
+
+```mermaid
+flowchart TD
+  A[First-run setup] --> B[Admin account + encrypted settings]
+  B --> C[Business profile and invoice series]
+  C --> D[Create multi-line invoice]
+  D --> E[VIES client lookup: EL + 9-digit VAT]
+  E --> F[Build AADE namespace-qualified XML]
+  F --> G{Environment}
+  G -->|local| H[Local XML log + simulated response]
+  G -->|test| I[AADE Test SendInvoices]
+  G -->|production| J[AADE Production SendInvoices]
+  I --> K[Store sent and received XML]
+  J --> K
+  H --> L[Invoice PDF / activity log]
+  K --> L
+```
 
 ## Features
 
-- Polished responsive Flask/Tailwind interface
-- Greek / English UI toggle
-- SQLite local persistence — no account required
-- Draft, review, and myDATA transmission state
-- Safe `demo`, AADE `development`, and `production` environments
-- XML invoice builder and documented AADE headers
-- Health endpoint at `/health`
+- Greek / English UI and light / dark mode
+- Local SQLite database, encrypted integration secrets
+- Admin login, users, Cloudflare Turnstile server-side validation
+- AADE invoice types, multiple invoice lines, zero-VAT exemption validation
+- VIES validation for Greek VATs (`EL` service code)
+- Configurable invoice series and number
+- AADE XML sent/received debug log and inline PDF invoices
 
-## Run locally
+## Run
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 python app.py
 ```
 
-Open `http://127.0.0.1:5000`. The default `MYDATA_MODE=demo` never calls AADE; it generates a clearly labelled `DEMO-*` MARK.
+Open `http://127.0.0.1:5000` and complete first-run setup. Keep `.env`, `instance/`, and Cloudflare credentials out of Git.
 
-For an automated local dependency/setup preparation, run `bash scripts/setup.sh`, configure the Cloudflare tunnel as below, start the system services, then open the site. The first visit presents a one-time administrator setup wizard.
+## Deploy with Cloudflare Tunnel
 
-## Secure first-run setup
-
-The first administrator completes an on-screen setup wizard. It creates the admin account, selects Demo / AADE Test / Production mode, configures invoice series and first number, and optionally accepts AADE and Cloudflare Turnstile credentials. Secrets are encrypted before being stored in SQLite using a server-local Fernet key in `instance/`; that key, the database, and `.env` are excluded from Git. Back up the database and its matching key together.
-
-After setup, administrators can manage users, integrations, numbering, activity/XML logs, and PDF invoice downloads. Turnstile uses Cloudflare Siteverify on the server; configure both the site key and secret key in Settings before it is enforced.
-
-## AADE configuration
-
-The AADE specification requires `aade-user-id` and `ocp-apim-subscription-key` in every call. Put credentials only in your local `.env` or deployment secret manager — `.env` and databases are intentionally ignored by Git.
-
-```bash
-MYDATA_MODE=development # uses https://mydataapidev.aade.gr
-MYDATA_USER_ID=your-user-id
-MYDATA_SUBSCRIPTION_KEY=your-subscription-key
-MYDATA_VAT_NUMBER=your-vat-number
-SECRET_KEY=a-long-random-secret
-```
-
-Use production only after AADE schema validation and an operational review. myAade is a hackathon prototype, not accounting or tax advice.
-
-## Cloudflare Tunnel test domain
-
-For a disposable public testing URL, start the app and run `bash scripts/run-tunnel.sh`. It prints a temporary `trycloudflare.com` URL.
-
-For your Cloudflare-managed test domain, install `cloudflared`, run `cloudflared tunnel login`, then `cloudflared tunnel create myaade-test` and `cloudflared tunnel route dns myaade-test test.example.com`. Copy `cloudflared/config.example.yml` to `~/.cloudflared/config.yml`, replace the tunnel UUID, credentials path, and hostname, then run `cloudflared tunnel run myaade-test`. Keep tunnel credentials outside this repository; `.cloudflared/` is ignored.
-
-### Start on reboot (Linux/systemd)
-
-The repository includes service templates in `deploy/systemd/`. They run the app through Gunicorn on local port `5050` and expose it only through Cloudflare Tunnel. Adjust absolute paths if your checkout is elsewhere, then install and start them:
+Configure `cloudflared/config.yml` outside Git, then install the included services:
 
 ```bash
 sudo cp deploy/systemd/myaade.service /etc/systemd/system/
 sudo cp deploy/systemd/myaade-cloudflared.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now myaade.service myaade-cloudflared.service
-sudo systemctl status myaade.service myaade-cloudflared.service
 ```
 
-Use `journalctl -u myaade.service -f` or `journalctl -u myaade-cloudflared.service -f` to diagnose failures. Do not enable production myDATA credentials until the submission schema and full accounting workflows have been validated.
+Use `journalctl -u myaade.service -f` for application logs.
 
-## myDATA integration
+## Security
 
-`SendInvoices` is implemented as an XML POST. The project configuration also documents the other AADE endpoints planned for the product: CancelInvoice, SendIncomeClassification, SendExpensesClassification, RequestDocs, RequestTransmittedDocs, RequestMyIncome, and RequestMyExpenses. AADE’s API documentation is the source of truth: [v2.0.2 preofficial ERP PDF](https://www.aade.gr/sites/default/files/2026-06/myDATA%20API%20Documentation%20v2.0.2_preofficial_erp.pdf).
-
-## Built with Codex and GPT-5.6
-
-This project was created during OpenAI Build Week with Codex. Codex accelerated the full vertical slice: shaping the local-first product concept, turning AADE REST/XML requirements into the Flask integration boundary, implementing the SQLite data model and environment safety rails, and iterating on a bilingual Tailwind user experience. The human product decisions were to keep financial data local by default, make Demo mode unmistakable, and prioritize a single anxiety-reducing submission journey over a sprawling ERP.
-
-## Hackathon demo checklist
-
-- [ ] Record a public YouTube demo with audio under three minutes.
-- [ ] Show the Demo invoice flow, language switch, and environment safety.
-- [ ] Explain the Codex/GPT-5.6 collaboration above.
-- [ ] Add the public repository URL and `/feedback` Codex Session ID to Devpost.
-- [ ] Provide a public demo deployment or clear local testing instructions.
+Secrets entered through Settings are encrypted before SQLite storage. Back up `instance/myaade-master.key` together with the database; losing the key makes stored secrets unrecoverable.
 
 ## License
 
