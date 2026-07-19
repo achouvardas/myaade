@@ -281,11 +281,12 @@ def viva_invoice_from_template(template, gross_amount):
     if template.invoice_type not in {"11.1", "11.2"}: raise ValueError("Viva POS automation requires a retail-receipt template (11.1 or 11.2).")
     template_lines = InvoiceTemplateLine.query.filter_by(template_id=template.id).order_by(InvoiceTemplateLine.id).all()
     if not template_lines: raise ValueError("The selected Viva template has no invoice lines.")
+    if len(template_lines) != 1: raise ValueError("Viva POS automation requires a template with exactly one line.")
     weights = [Decimal(line.quantity) * Decimal(line.unit_price) * (Decimal("1") + Decimal(line.vat_rate) / 100) for line in template_lines]
     weight_total = sum(weights, Decimal("0"))
-    # A POS template may intentionally carry no price: use it as a VAT/classification
-    # blueprint and distribute the received gross amount equally between its lines.
-    if weight_total <= 0: weights, weight_total = [Decimal("1")] * len(template_lines), Decimal(len(template_lines))
+    # A POS template may intentionally carry no price: its single line is a VAT and
+    # classification blueprint; the received gross amount determines its net value.
+    if weight_total <= 0: weights, weight_total = [Decimal("1")], Decimal("1")
     calculated = []
     for line, weight in zip(template_lines, weights):
         line_gross = gross_amount * weight / weight_total
@@ -483,7 +484,8 @@ def settings():
     configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
     public_scheme = request.headers.get("X-Forwarded-Proto", "https").split(",")[0].strip()
     public_base = f"{public_scheme}://{request.host}"
-    return render_template("settings.html", values=values, configured=configured, viva_templates=InvoiceTemplate.query.order_by(InvoiceTemplate.name).all(), viva_webhook_urls={mode: f"{public_base}{url_for('viva_webhook', mode=mode)}" for mode in ("test", "production")})
+    viva_templates = [template for template in InvoiceTemplate.query.order_by(InvoiceTemplate.name).all() if InvoiceTemplateLine.query.filter_by(template_id=template.id).count() == 1]
+    return render_template("settings.html", values=values, configured=configured, viva_templates=viva_templates, viva_webhook_urls={mode: f"{public_base}{url_for('viva_webhook', mode=mode)}" for mode in ("test", "production")})
 @app.get("/settings/secrets/<key>")
 def reveal_setting_secret(key):
     require_admin()

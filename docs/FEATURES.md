@@ -36,7 +36,7 @@
 - Optional Viva Demo and Production configuration keeps Merchant/API credentials, POS APIs OAuth credentials (terminal discovery), and Smart Checkout OAuth credentials (payment retrieval) encrypted at rest.
 - Settings presents a verification-ready webhook URL for each environment and can discover available terminals through Viva's device API; the administrator selects the permitted TID and one invoice template.
 - Each enabled `Transaction Payment Created` webhook is checked for its event type, successful status, configured merchant, configured terminal, currency amount, and duplicate transaction ID. Elefthero then retrieves the transaction from Viva with OAuth before accepting it.
-- Viva's VAT-inclusive payment amount is proportionally applied to the template's line gross values; Elefthero calculates the corresponding net amounts and per-line VAT before creating the invoice.
+- Viva POS supports templates with exactly one line. The selected line's VAT rate is applied to Viva's VAT-inclusive payment amount, and Elefthero calculates the corresponding net amount and VAT before creating the invoice.
 - The safe default is a reviewable invoice draft. Automatic AADE submission is a separate, explicit setting and should only be enabled after Viva Demo validation.
 
 ## Security, access, and accessibility
