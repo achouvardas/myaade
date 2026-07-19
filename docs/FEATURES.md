@@ -33,7 +33,7 @@
 
 ## Viva POS payments
 
-- Optional Viva Demo and Production configuration keeps Merchant/API and OAuth credentials encrypted at rest.
+- Optional Viva Demo and Production configuration keeps Merchant/API credentials, POS APIs OAuth credentials (terminal discovery), and Smart Checkout OAuth credentials (payment retrieval) encrypted at rest.
 - Settings presents a verification-ready webhook URL for each environment and can discover available terminals through Viva's device API; the administrator selects the permitted TID and one invoice template.
 - Each enabled `Transaction Payment Created` webhook is checked for its event type, successful status, configured merchant, configured terminal, currency amount, and duplicate transaction ID. Elefthero then retrieves the transaction from Viva with OAuth before accepting it.
 - Viva's VAT-inclusive payment amount is proportionally applied to the template's line gross values; Elefthero calculates the corresponding net amounts and per-line VAT before creating the invoice.

@@ -267,11 +267,12 @@ def turnstile_ok(token):
 
 def viva_urls(mode):
     return ("https://demo-api.vivapayments.com", "https://demo.vivapayments.com", "https://demo-accounts.vivapayments.com") if mode == "test" else ("https://api.vivapayments.com", "https://www.vivapayments.com", "https://accounts.vivapayments.com")
-def viva_token(mode):
-    client_id, client_secret = setting(f"viva_{mode}_client_id"), setting(f"viva_{mode}_client_secret")
-    if not client_id or not client_secret: raise ValueError(f"Viva {mode} OAuth client ID and secret are required.")
+def viva_token(mode, purpose="checkout"):
+    prefix, scope = ("pos", "urn:viva:payments:ecr:api") if purpose == "pos" else ("checkout", "urn:viva:payments:core:api:redirectcheckout")
+    client_id, client_secret = setting(f"viva_{mode}_{prefix}_client_id"), setting(f"viva_{mode}_{prefix}_client_secret")
+    if not client_id or not client_secret: raise ValueError(f"Viva {mode} {prefix} OAuth client ID and secret are required.")
     token_url = viva_urls(mode)[2] + "/connect/token"
-    response = requests.post(token_url, data={"grant_type": "client_credentials", "scope": "urn:viva:payments:core:api:redirectcheckout"}, auth=(client_id, client_secret), timeout=15)
+    response = requests.post(token_url, data={"grant_type": "client_credentials", "scope": scope}, auth=(client_id, client_secret), timeout=15)
     response.raise_for_status(); return response.json()["access_token"]
 def viva_retrieve_transaction(mode, transaction_id):
     response = requests.get(viva_urls(mode)[0] + f"/checkout/v2/transactions/{transaction_id}", headers={"Authorization": f"Bearer {viva_token(mode)}"}, timeout=15)
@@ -470,12 +471,12 @@ def two_factor_disable():
 def settings():
     require_admin()
     if request.method == "POST":
-        for key, secret in [("mydata_mode", False), ("mydata_test_user_id", True), ("mydata_test_subscription_key", True), ("mydata_production_user_id", True), ("mydata_production_subscription_key", True), ("resend_api_key", True), ("resend_sender_name", False), ("resend_sender_email", False), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False), ("login_rate_limit_attempts", False), ("login_rate_limit_window_minutes", False), ("login_rate_limit_lockout_minutes", False), ("viva_enabled", False), ("viva_auto_submit", False), ("viva_template_id", False), ("viva_test_terminal_id", False), ("viva_production_terminal_id", False), ("viva_test_merchant_id", True), ("viva_test_api_key", True), ("viva_test_client_id", True), ("viva_test_client_secret", True), ("viva_production_merchant_id", True), ("viva_production_api_key", True), ("viva_production_client_id", True), ("viva_production_client_secret", True)]:
+        for key, secret in [("mydata_mode", False), ("mydata_test_user_id", True), ("mydata_test_subscription_key", True), ("mydata_production_user_id", True), ("mydata_production_subscription_key", True), ("resend_api_key", True), ("resend_sender_name", False), ("resend_sender_email", False), ("turnstile_sitekey", False), ("turnstile_secret", True), ("invoice_series", False), ("invoice_next_number", False), ("business_vat", False), ("login_rate_limit_attempts", False), ("login_rate_limit_window_minutes", False), ("login_rate_limit_lockout_minutes", False), ("viva_enabled", False), ("viva_auto_submit", False), ("viva_template_id", False), ("viva_test_terminal_id", False), ("viva_production_terminal_id", False), ("viva_test_merchant_id", True), ("viva_test_api_key", True), ("viva_test_checkout_client_id", True), ("viva_test_checkout_client_secret", True), ("viva_test_pos_client_id", True), ("viva_test_pos_client_secret", True), ("viva_production_merchant_id", True), ("viva_production_api_key", True), ("viva_production_checkout_client_id", True), ("viva_production_checkout_client_secret", True), ("viva_production_pos_client_id", True), ("viva_production_pos_client_secret", True)]:
             value = request.form.get(key, "")
             if value or not secret: set_setting(key, value, secret)
         db.session.commit(); audit("settings_updated", "Administrator updated integration and numbering settings"); flash("Settings saved. Secrets are encrypted at rest.", "success"); return redirect(url_for("settings"))
     values = {key: setting(key) for key in ["mydata_mode", "resend_sender_name", "resend_sender_email", "turnstile_sitekey", "invoice_series", "invoice_next_number", "business_vat", "login_rate_limit_attempts", "login_rate_limit_window_minutes", "login_rate_limit_lockout_minutes", "viva_enabled", "viva_auto_submit", "viva_template_id", "viva_test_terminal_id", "viva_production_terminal_id"]}
-    configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret", "viva_test_merchant_id", "viva_test_api_key", "viva_test_client_id", "viva_test_client_secret", "viva_production_merchant_id", "viva_production_api_key", "viva_production_client_id", "viva_production_client_secret"]}
+    configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret", "viva_test_merchant_id", "viva_test_api_key", "viva_test_checkout_client_id", "viva_test_checkout_client_secret", "viva_test_pos_client_id", "viva_test_pos_client_secret", "viva_production_merchant_id", "viva_production_api_key", "viva_production_checkout_client_id", "viva_production_checkout_client_secret", "viva_production_pos_client_id", "viva_production_pos_client_secret"]}
     configured["mydata_test_user_id"] |= bool(setting("mydata_user_id"))
     configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
     public_scheme = request.headers.get("X-Forwarded-Proto", "https").split(",")[0].strip()
@@ -484,7 +485,7 @@ def settings():
 @app.get("/settings/secrets/<key>")
 def reveal_setting_secret(key):
     require_admin()
-    allowed = {"mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret", "viva_test_merchant_id", "viva_test_api_key", "viva_test_client_id", "viva_test_client_secret", "viva_production_merchant_id", "viva_production_api_key", "viva_production_client_id", "viva_production_client_secret"}
+    allowed = {"mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret", "viva_test_merchant_id", "viva_test_api_key", "viva_test_checkout_client_id", "viva_test_checkout_client_secret", "viva_test_pos_client_id", "viva_test_pos_client_secret", "viva_production_merchant_id", "viva_production_api_key", "viva_production_checkout_client_id", "viva_production_checkout_client_secret", "viva_production_pos_client_id", "viva_production_pos_client_secret"}
     if key not in allowed: abort(404)
     value = setting(key)
     if not value and key.startswith("mydata_test_"):
@@ -496,8 +497,8 @@ def viva_devices():
     require_admin(); mode = request.args.get("mode", "test")
     if mode not in {"test", "production"}: abort(400)
     try:
-        response = requests.post(viva_urls(mode)[0] + "/ecr/v1/devices:search", json={"page": 1, "pageSize": 100}, headers={"Authorization": f"Bearer {viva_token(mode)}", "Content-Type": "application/json"}, timeout=15)
-        response.raise_for_status(); body = response.json(); devices = body.get("devices", body.get("items", body.get("data", [])))
+        response = requests.post(viva_urls(mode)[0] + "/ecr/v1/devices:search", json={"statusId": 1}, headers={"Authorization": f"Bearer {viva_token(mode, 'pos')}", "Content-Type": "application/json"}, timeout=15)
+        response.raise_for_status(); body = response.json(); devices = body if isinstance(body, list) else body.get("devices", body.get("items", body.get("data", [])))
         return jsonify(devices=devices)
     except (KeyError, requests.RequestException, ValueError) as error:
         audit("viva_devices_failed", f"{mode}: {error}"); return jsonify(error="Viva could not load terminals. Check the POS OAuth credentials and permissions."), 502
