@@ -478,7 +478,9 @@ def settings():
     configured = {key: bool(setting(key)) for key in ["mydata_test_user_id", "mydata_test_subscription_key", "mydata_production_user_id", "mydata_production_subscription_key", "resend_api_key", "turnstile_secret", "viva_test_merchant_id", "viva_test_api_key", "viva_test_client_id", "viva_test_client_secret", "viva_production_merchant_id", "viva_production_api_key", "viva_production_client_id", "viva_production_client_secret"]}
     configured["mydata_test_user_id"] |= bool(setting("mydata_user_id"))
     configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
-    return render_template("settings.html", values=values, configured=configured, viva_templates=InvoiceTemplate.query.order_by(InvoiceTemplate.name).all(), viva_webhook_urls={mode: url_for("viva_webhook", mode=mode, _external=True) for mode in ("test", "production")})
+    public_scheme = request.headers.get("X-Forwarded-Proto", "https").split(",")[0].strip()
+    public_base = f"{public_scheme}://{request.host}"
+    return render_template("settings.html", values=values, configured=configured, viva_templates=InvoiceTemplate.query.order_by(InvoiceTemplate.name).all(), viva_webhook_urls={mode: f"{public_base}{url_for('viva_webhook', mode=mode)}" for mode in ("test", "production")})
 @app.get("/settings/secrets/<key>")
 def reveal_setting_secret(key):
     require_admin()
