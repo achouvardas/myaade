@@ -5,6 +5,7 @@ import hmac
 import secrets
 import subprocess
 import tempfile
+import textwrap
 import uuid
 from html import escape
 from datetime import date, datetime, timedelta
@@ -543,7 +544,15 @@ def invoice_pdf(invoice_id):
     y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(82, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(300, y+9, "ΠΟΣ."); canvas.drawRightString(350, y+9, "ΤΙΜΗ"); canvas.drawRightString(405, y+9, "ΚΑΘ."); canvas.drawRightString(445, y+9, "ΦΠΑ%"); canvas.drawRightString(490, y+9, "ΦΠΑ €"); canvas.drawRightString(540, y+9, "ΣΥΝΟΛΟ")
     line_net_total, line_vat_total = Decimal("0"), Decimal("0")
     for index, line in enumerate(pdf_lines, 1):
-        vat_rate = Decimal(getattr(line, "vat_rate", invoice.vat_rate)); vat_amount = Decimal(line.net) * vat_rate / 100; line_net_total += Decimal(line.net); line_vat_total += vat_amount; y -= 30; canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, 30, fill=1, stroke=1); canvas.setFillColor(navy); canvas.drawString(52, y+10, str(index)); canvas.drawString(82, y+10, str(line.description)[:30]); canvas.drawRightString(300, y+10, f"{Decimal(getattr(line, 'quantity', 1)):g}"); canvas.drawRightString(350, y+10, f"{Decimal(getattr(line, 'unit_price', line.net)):.2f}"); canvas.drawRightString(405, y+10, f"{line.net:.2f}"); canvas.drawRightString(445, y+10, f"{vat_rate:.0f}%"); canvas.drawRightString(490, y+10, f"{vat_amount:.2f}"); canvas.drawRightString(540, y+10, f"{Decimal(line.net)+vat_amount:.2f} €")
+        vat_rate = Decimal(getattr(line, "vat_rate", invoice.vat_rate)); vat_amount = Decimal(line.net) * vat_rate / 100; line_net_total += Decimal(line.net); line_vat_total += vat_amount
+        description_lines = textwrap.wrap(str(line.description), width=35, break_long_words=False, break_on_hyphens=False) or [""]
+        row_height = max(30, 18 + len(description_lines) * 12); y -= row_height
+        canvas.setFillColor(HexColor("#ffffff" if index % 2 else "#f8fafc")); canvas.rect(42, y, 510, row_height, fill=1, stroke=1); canvas.setFillColor(navy)
+        description_y = y + row_height - 14
+        canvas.drawString(52, description_y, str(index))
+        for line_index, description_line in enumerate(description_lines): canvas.drawString(82, description_y - line_index * 12, description_line)
+        value_y = y + row_height / 2 - 3
+        canvas.drawRightString(300, value_y, f"{Decimal(getattr(line, 'quantity', 1)):g}"); canvas.drawRightString(350, value_y, f"{Decimal(getattr(line, 'unit_price', line.net)):.2f}"); canvas.drawRightString(405, value_y, f"{line.net:.2f}"); canvas.drawRightString(445, value_y, f"{vat_rate:.0f}%"); canvas.drawRightString(490, value_y, f"{vat_amount:.2f}"); canvas.drawRightString(540, value_y, f"{Decimal(line.net)+vat_amount:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{line_net_total:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{line_vat_total:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{line_net_total + line_vat_total:.2f} €")
     canvas.setFont("SiraSans", 9); canvas.setFillColor(slate); canvas.drawString(42, 235, f"Τρόπος πληρωμής: {PAYMENT_METHODS.get(invoice.payment_method, '-')}"); canvas.drawString(42, 216, f"UID: {invoice.invoice_uid or '-'}"); canvas.drawString(42, 197, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
     pdf_notes = invoice.notes or ""
