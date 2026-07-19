@@ -21,11 +21,10 @@
         <button id="fullscreen-demo" class="rounded-lg border px-4 py-2 font-semibold">Full screen presentation</button>
         <button id="pause-demo" class="rounded-lg border px-4 py-2 font-semibold">Pause</button>
         <button id="restart-demo" class="rounded-lg border px-4 py-2 font-semibold">Restart</button>
-        <button id="record-demo" class="rounded-lg border border-cyan-700 px-4 py-2 font-semibold text-cyan-800">Record full-screen &amp; export MP4</button>
       </div>
     </div>
     <div class="bg-slate-100 p-3"><iframe id="demo-frame" title="Elefthero guided demonstration" class="h-[650px] w-full rounded-lg border bg-white" src="{{ presentation_url }}?slide=1"></iframe></div>
-    <div id="demo-status" role="status" class="border-t px-5 py-3 text-sm text-slate-600">The recording control asks permission before capturing anything.</div>
+    <div id="demo-status" role="status" class="border-t px-5 py-3 text-sm text-slate-600">Ready for a privacy-safe guided demonstration.</div>
   </div>
 </section>
 
@@ -94,7 +93,7 @@
   fullscreen.addEventListener('click', () => toggleFullscreen().catch(() => { status.textContent = 'Full-screen presentation could not be started.'; }));
   pause.addEventListener('click', () => { if (running) { stopTimer(); running = false; paused = true; narration.pause(); pause.textContent = 'Resume'; status.textContent = 'Tour paused.'; } else { pause.textContent = 'Pause'; begin(); } });
   restart.addEventListener('click', reset);
-  record.addEventListener('click', async () => {
+  record?.addEventListener('click', async () => {
     if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) { status.textContent = 'This browser cannot record a screen share. Use a current Chrome or Edge browser.'; return; }
     try {
       if (document.fullscreenElement !== player) await toggleFullscreen();
