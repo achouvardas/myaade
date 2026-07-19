@@ -281,14 +281,16 @@ def viva_invoice_from_template(template, gross_amount):
     if template.invoice_type not in {"11.1", "11.2"}: raise ValueError("Viva POS automation requires a retail-receipt template (11.1 or 11.2).")
     template_lines = InvoiceTemplateLine.query.filter_by(template_id=template.id).order_by(InvoiceTemplateLine.id).all()
     if not template_lines: raise ValueError("The selected Viva template has no invoice lines.")
-    source_gross = sum((Decimal(line.quantity) * Decimal(line.unit_price) * (Decimal("1") + Decimal(line.vat_rate) / 100) for line in template_lines), Decimal("0"))
-    if source_gross <= 0: raise ValueError("The selected Viva template must have a positive total.")
-    scale = gross_amount / source_gross; calculated = []
-    for line in template_lines:
-        net = (Decimal(line.quantity) * Decimal(line.unit_price) * scale).quantize(Decimal(".01"))
+    weights = [Decimal(line.quantity) * Decimal(line.unit_price) * (Decimal("1") + Decimal(line.vat_rate) / 100) for line in template_lines]
+    weight_total = sum(weights, Decimal("0"))
+    # A POS template may intentionally carry no price: use it as a VAT/classification
+    # blueprint and distribute the received gross amount equally between its lines.
+    if weight_total <= 0: weights, weight_total = [Decimal("1")] * len(template_lines), Decimal(len(template_lines))
+    calculated = []
+    for line, weight in zip(template_lines, weights):
+        line_gross = gross_amount * weight / weight_total
+        net = (line_gross / (Decimal("1") + Decimal(line.vat_rate) / 100)).quantize(Decimal(".01"))
         calculated.append((line, net))
-    target_net = sum((gross_amount / (Decimal("1") + Decimal(line.vat_rate) / 100) * ((Decimal(line.quantity) * Decimal(line.unit_price) * (Decimal("1") + Decimal(line.vat_rate) / 100)) / source_gross) for line in template_lines), Decimal("0")).quantize(Decimal(".01"))
-    calculated[-1] = (calculated[-1][0], calculated[-1][1] + target_net - sum((net for _, net in calculated), Decimal("0")))
     number = setting("invoice_next_number", "1")
     retail = template.invoice_type in {"11.1", "11.2", "11.4"}
     invoice = Invoice(number=number, invoice_type=template.invoice_type, customer="ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ" if retail else "Viva POS customer", vat_number="000000000" if retail else "", description=template_lines[0].description, net=sum((net for _, net in calculated), Decimal("0")), vat_rate=Decimal(template_lines[0].vat_rate), issue_date=date.today(), payment_method="7", notes="Δημιουργήθηκε από επιβεβαιωμένη πληρωμή Viva POS.")
