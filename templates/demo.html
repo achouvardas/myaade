@@ -32,6 +32,7 @@
 <script>
 (() => {
   const presentation = {{ presentation_url|tojson }};
+  const privateUrl = path => `${path}${path.includes('?') ? '&' : '?'}demo_privacy=1`;
   const steps = [
     {title: 'Elefthero: the open-source way to invoice in Greece', url: `${presentation}?slide=1`, seconds: 10.15},
     {title: 'Why this matters', url: `${presentation}?slide=2`, seconds: 9.46},
@@ -39,16 +40,16 @@
     {title: 'AADE workflow', url: `${presentation}?slide=4`, seconds: 10.22},
     {title: 'Built with Codex and GPT-5.6', url: `${presentation}?slide=5`, seconds: 12.60},
     {title: 'A real, inspectable product', url: `${presentation}?slide=6`, seconds: 9.10},
-    {title: 'Dashboard', url: '/', seconds: 11.11},
-    {title: 'Invoice list and search', url: '/invoices', seconds: 9.67},
-    {title: 'New multi-line invoice', url: '/invoices/new', seconds: 11.66},
-    {title: 'Saved clients', url: '/clients', seconds: 11.11},
-    {title: 'Templates and reuse', url: '/templates', seconds: 10.75},
-    {title: 'Business profile and settings', url: '/business-settings', seconds: 12.89},
-    {title: 'Secure access', url: '/users', seconds: 12.86},
-    {title: 'Security settings and two factor authentication', url: '/settings', seconds: 10.22},
-    {title: 'Authenticator setup', url: '/two-factor/setup', seconds: 9.82},
-    {title: 'Developer log and XML evidence', url: '/logs', seconds: 11.98}
+    {title: 'Dashboard', url: privateUrl('/'), seconds: 11.11},
+    {title: 'Invoice list and search', url: privateUrl('/invoices'), seconds: 9.67},
+    {title: 'New multi-line invoice', url: privateUrl('/invoices/new'), seconds: 11.66},
+    {title: 'Saved clients', url: privateUrl('/clients'), seconds: 11.11},
+    {title: 'Templates and reuse', url: privateUrl('/templates'), seconds: 10.75},
+    {title: 'Business profile and settings', url: privateUrl('/business-settings'), seconds: 12.89},
+    {title: 'Secure access', url: privateUrl('/users'), seconds: 12.86},
+    {title: 'Security settings and two factor authentication', url: privateUrl('/settings'), seconds: 10.22},
+    {title: 'Authenticator setup', url: privateUrl('/two-factor/setup'), seconds: 9.82},
+    {title: 'Developer log and XML evidence', url: privateUrl('/logs'), seconds: 11.98}
   ];
   const totalSeconds = steps.reduce((sum, step) => sum + step.seconds, 0);
   const frame = document.getElementById('demo-frame');
