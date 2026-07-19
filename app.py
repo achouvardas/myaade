@@ -760,6 +760,15 @@ def use_template(template_id):
     template = db.get_or_404(InvoiceTemplate, template_id)
     audit("template_opened", template.name)
     return redirect(url_for("new_invoice", from_template=template.id))
+@app.post("/templates/<int:template_id>/delete")
+def delete_template(template_id):
+    template = db.get_or_404(InvoiceTemplate, template_id)
+    name = template.name
+    InvoiceTemplateLine.query.filter_by(template_id=template.id).delete()
+    if setting("viva_template_id") == str(template.id): set_setting("viva_template_id", "")
+    db.session.delete(template); db.session.commit()
+    audit("template_deleted", name); flash("Template deleted.", "success")
+    return redirect(url_for("templates"))
 @app.post("/invoices/<int:invoice_id>/send")
 def send_invoice(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
