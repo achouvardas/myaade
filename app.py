@@ -533,10 +533,12 @@ def invoice_pdf(invoice_id):
     saved_client = Client.query.filter_by(vat_number=invoice.vat_number).first()
     customer_address = invoice.customer_address or (saved_client.address if saved_client else "")
     customer_profession = invoice.customer_profession or (saved_client.profession if saved_client else "")
+    customer_gemi = saved_client.gemi_number if saved_client else ""
     canvas.setFillColor(HexColor("#ffffff")); canvas.rect(42, 545, 510, 85, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 11); canvas.drawString(54, 606, invoice.customer); canvas.setFont("SiraSans", 9)
     if invoice.invoice_type not in {"11.1", "11.2"}:
         if customer_profession: canvas.drawString(54, 587, customer_profession[:90])
-        canvas.drawString(54, 570, f"ΑΦΜ: {invoice.vat_number}")
+        customer_vat_gemi = " · ".join(part for part in [f"ΑΦΜ: {invoice.vat_number}", f"Αρ. ΓΕΜΗ: {customer_gemi}" if customer_gemi else ""] if part)
+        canvas.drawString(54, 570, customer_vat_gemi)
         if customer_address: canvas.drawString(54, 557, f"ΔΙΕΥΘΥΝΣΗ: {customer_address.replace(chr(10), ', ')[:78]}")
     y = 510; canvas.setFillColor(navy); canvas.rect(42, y, 510, 26, fill=1, stroke=0); canvas.setFillColor(HexColor("#ffffff")); canvas.drawString(52, y+9, "Α/Α"); canvas.drawString(82, y+9, "ΠΕΡΙΓΡΑΦΗ"); canvas.drawRightString(300, y+9, "ΠΟΣ."); canvas.drawRightString(350, y+9, "ΤΙΜΗ"); canvas.drawRightString(405, y+9, "ΚΑΘ."); canvas.drawRightString(445, y+9, "ΦΠΑ%"); canvas.drawRightString(490, y+9, "ΦΠΑ €"); canvas.drawRightString(540, y+9, "ΣΥΝΟΛΟ")
     line_net_total, line_vat_total = Decimal("0"), Decimal("0")
