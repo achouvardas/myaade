@@ -806,12 +806,15 @@ def email_invoice(invoice_id):
 @app.get("/invoices")
 def invoices():
     query = Invoice.query
-    term, status, invoice_type, vat = (request.args.get(key, "").strip() for key in ("q", "status", "invoice_type", "vat"))
+    term, status, invoice_type, vat, source = (request.args.get(key, "").strip() for key in ("q", "status", "invoice_type", "vat", "source"))
     if " — " in term: term = term.rsplit(" — ", 1)[-1].strip()
     if term: query = query.filter(or_(Invoice.number.ilike(f"%{term}%"), Invoice.customer.ilike(f"%{term}%"), Invoice.vat_number.ilike(f"%{term}%"), Invoice.mydata_mark.ilike(f"%{term}%")))
     if status in {"draft", "transmitted", "cancelled"}: query = query.filter_by(status=status)
     if invoice_type in INVOICE_TYPES: query = query.filter_by(invoice_type=invoice_type)
     if vat: query = query.filter(Invoice.vat_number.ilike(f"%{vat}%"))
+    viva_invoice_ids = db.session.query(VivaPayment.invoice_id).filter(VivaPayment.invoice_id.isnot(None))
+    if source == "viva": query = query.filter(Invoice.id.in_(viva_invoice_ids))
+    elif source == "manual": query = query.filter(~Invoice.id.in_(viva_invoice_ids))
     for key, operator in (("start", ">="), ("end", "<=")):
         raw = request.args.get(key, "")
         if raw:
@@ -819,7 +822,8 @@ def invoices():
             except ValueError: pass
     page = max(request.args.get("page", 1, type=int), 1)
     pagination = query.order_by(Invoice.issue_date.desc(), Invoice.created_at.desc()).paginate(page=page, per_page=15, error_out=False)
-    return render_template("invoices.html", invoices=pagination.items, pagination=pagination, invoice_types=INVOICE_TYPES, payment_methods=PAYMENT_METHODS, filters=request.args, client_suggestions=Client.query.order_by(Client.name).all())
+    page_invoices = pagination.items; viva_ids = {item[0] for item in db.session.query(VivaPayment.invoice_id).filter(VivaPayment.invoice_id.in_([invoice.id for invoice in page_invoices])).all()}
+    return render_template("invoices.html", invoices=page_invoices, viva_ids=viva_ids, pagination=pagination, invoice_types=INVOICE_TYPES, payment_methods=PAYMENT_METHODS, filters=request.args, client_suggestions=Client.query.order_by(Client.name).all())
 @app.post("/invoices/<int:invoice_id>/delete")
 def delete_invoice(invoice_id):
     invoice = db.get_or_404(Invoice, invoice_id)
