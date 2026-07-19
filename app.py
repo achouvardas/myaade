@@ -665,7 +665,7 @@ def invoice_pdf(invoice_id):
     if viva_payment:
         try:
             viva_event = json.loads(viva_payment.payload or "{}").get("EventData", {})
-            viva_lines = ["Πληρωμή με Viva.com", f"Transaction ID: {viva_event.get('TransactionId', viva_payment.transaction_id)}", f"TID: {viva_event.get('TerminalId', viva_payment.terminal_id)}", f"Order Code: {viva_event.get('OrderCode', '-')}", f"Card Number: {viva_event.get('CardNumber', '-')}", f"Authorization ID: {viva_event.get('AuthorizationId', '-')}", f"RRN: {viva_event.get('RetrievalReferenceNumber', '-')}"]
+            viva_lines = ["Πληρωμή με Viva.com", f"Transaction ID: {viva_event.get('TransactionId', viva_payment.transaction_id)}", f"TID: {viva_event.get('TerminalId', viva_payment.terminal_id)} · Order Code: {viva_event.get('OrderCode', '-')}", f"Card Number: {viva_event.get('CardNumber', '-')} · Authorization ID: {viva_event.get('AuthorizationId', '-')}", f"RRN: {viva_event.get('RetrievalReferenceNumber', '-')}"]
             pdf_notes = (pdf_notes + "\n" if pdf_notes else "") + "\n".join(viva_lines)
         except (TypeError, ValueError): pass
     if pdf_notes:
