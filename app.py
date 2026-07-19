@@ -657,7 +657,7 @@ def invoice_pdf(invoice_id):
         canvas.drawRightString(300, value_y, f"{Decimal(getattr(line, 'quantity', 1)):g}"); canvas.drawRightString(350, value_y, f"{Decimal(getattr(line, 'unit_price', line.net)):.2f}"); canvas.drawRightString(405, value_y, f"{line.net:.2f}"); canvas.drawRightString(445, value_y, f"{vat_rate:.0f}%"); canvas.drawRightString(490, value_y, f"{vat_amount:.2f}"); canvas.drawRightString(540, value_y, f"{Decimal(line.net)+vat_amount:.2f} €")
     totals_y = 170; canvas.setFillColor(pale); canvas.rect(330, totals_y, 222, 82, fill=1, stroke=1); canvas.setFillColor(navy); canvas.setFont("SiraSans", 10); canvas.drawString(344, totals_y+58, "ΚΑΘΑΡΗ ΑΞΙΑ"); canvas.drawRightString(538, totals_y+58, f"{line_net_total:.2f} €"); canvas.drawString(344, totals_y+37, "Φ.Π.Α."); canvas.drawRightString(538, totals_y+37, f"{line_vat_total:.2f} €"); canvas.setFont("SiraSans", 12); canvas.drawString(344, totals_y+14, "ΣΥΝΟΛΙΚΟ ΠΟΣΟ"); canvas.drawRightString(538, totals_y+14, f"{line_net_total + line_vat_total:.2f} €")
     canvas.setFont("SiraSans", 9); canvas.setFillColor(slate); canvas.drawString(42, 235, f"Τρόπος πληρωμής: {PAYMENT_METHODS.get(invoice.payment_method, '-')}"); canvas.drawString(42, 216, f"UID: {invoice.invoice_uid or '-'}"); canvas.drawString(42, 197, f"ΜΑΡΚ: {invoice.mydata_mark or '-'}")
-    pdf_notes = invoice.notes or ""
+    pdf_notes = (invoice.notes or "").replace("Δημιουργήθηκε από επιβεβαιωμένη πληρωμή Viva POS.", "").strip(" -\n")
     if invoice.invoice_type == "5.1" and invoice.correlated_mark:
         pdf_notes = f"{pdf_notes} - " if pdf_notes else ""
         pdf_notes += f"Συσχετισμένο ΜΑΡΚ: {invoice.correlated_mark}"
