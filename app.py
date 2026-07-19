@@ -436,6 +436,23 @@ def settings():
     configured["mydata_test_user_id"] |= bool(setting("mydata_user_id"))
     configured["mydata_test_subscription_key"] |= bool(setting("mydata_subscription_key"))
     return render_template("settings.html", values=values, configured=configured)
+@app.get("/settings/resend-usage")
+def resend_usage():
+    require_admin()
+    api_key = setting("resend_api_key")
+    if not api_key:
+        return jsonify(error="Configure a Resend API key first."), 400
+    try:
+        response = requests.get("https://api.resend.com/domains", headers={"Authorization": f"Bearer {api_key}", "User-Agent": "Elefthero/1.0"}, timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        domains = [{"name": item.get("name", ""), "status": item.get("status", "unknown"), "sending": item.get("capabilities", {}).get("sending", "unknown"), "receiving": item.get("capabilities", {}).get("receiving", "unknown")} for item in payload.get("data", [])]
+        usage = {"daily_used": response.headers.get("x-resend-daily-quota"), "monthly_used": response.headers.get("x-resend-monthly-quota"), "rate_limit": response.headers.get("ratelimit-limit"), "rate_remaining": response.headers.get("ratelimit-remaining"), "rate_reset_seconds": response.headers.get("ratelimit-reset"), "domains": domains}
+        audit("resend_usage_checked", f"Administrator checked Resend usage for {len(domains)} domain(s)")
+        return jsonify(usage)
+    except (requests.RequestException, ValueError) as error:
+        audit("resend_usage_failed", str(error))
+        return jsonify(error="Resend could not provide usage right now. Check the API key, its permissions, and your Resend account."), 502
 @app.get("/settings/secrets/<key>")
 def reveal_setting_secret(key):
     require_admin()

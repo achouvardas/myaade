@@ -33,7 +33,7 @@ Elefthero is intentionally focused, but complete enough for day-to-day small-bus
 
 - AADE Test and Production submissions, real myDATA XML, MARK/UID/QR results, and invoice cancellation.
 - Multi-line invoices, VAT and VAT-exemption handling, payment methods, income/E3 classifications, series, numbering, notes, and credit-invoice reuse.
-- Inline PDF invoices with business logo/details, customer information, line VAT, AADE identifiers, and manual Resend delivery after transmission.
+- Inline PDF invoices with business logo/details, customer information, line VAT, AADE identifiers, manual Resend delivery after transmission, and an admin-only Resend usage/domain-status check.
 - Saved clients with VIES validation, optional ΓΕΜΗ enrichment, reusable addresses, filters, pagination, and invoice-by-type statistics.
 - Templates, editable “reuse as new draft”, dashboard totals, top customers, and client analytics.
 - Secure setup, encrypted settings, user roles, server-enforced CSRF protection, configurable login rate limiting, optional Cloudflare Turnstile, optional authenticator-app 2FA, audit logs, and accessibility controls.

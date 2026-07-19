@@ -30,6 +30,7 @@
 - PDF notes include free text, automatic VAT-exemption text, and `5.1` original MARK.
 - Reuse an existing invoice as an editable fresh draft, or save a transmitted invoice as a named template.
 - Resend delivery is manual and available only for transmitted invoices; it attaches the PDF and uses the configured sender details.
+- Settings includes an administrator-only Resend usage check. It reads Resend's daily/free-plan and monthly used-quota headers, API rate-limit headers, and sender-domain status without exposing the stored API key. Resend does not expose the plan maximum through this API response, so that remains linked to the Resend dashboard.
 
 ## Security, access, and accessibility
 
